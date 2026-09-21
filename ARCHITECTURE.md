@@ -1,0 +1,118 @@
+# Architecture
+
+Auto Jev-Codex has one main flow. A user selects the provider in Paseo and
+sends a message. The plugin classifies the message and starts a Codex turn.
+
+## Modules
+
+```text
+index.client.tsx          Register client features
+index.server.ts           Register server features
+client/
+  settings-screen.tsx     Show plugin settings
+server/
+  provider.ts             Manage Paseo sessions and Codex turns
+  codex-app-server.ts     Run the local Codex JSON-RPC process
+  routing.ts              Map a Jev result to turn options
+  route-context.ts        Limit recent conversation context
+  session-controls.ts     Validate composer controls
+  jev.ts                  Call TypeSafe and validate its response
+  settings-store.ts       Save settings and migrate old settings
+shared/
+  settings.ts             Define schemas, defaults, types, and RPCs
+tests/                    Test public behavior
+```
+
+Paseo requires runtime code in `client/`, `server/`, or `shared/`. The two root
+files are the plugin entry points. They only register features.
+
+## Route a new turn
+
+The provider takes these steps for each new turn:
+
+1. Read up to six recent conversation items.
+2. Limit each item to 1,000 characters.
+3. Send the new message and this context to TypeSafe.
+4. Validate all TypeSafe values.
+5. Select the lane, model, effort, Fast state, and Plan state.
+6. Apply explicit user controls.
+7. Start the Codex turn with an explicit sandbox and approval policy.
+
+The context can contain user messages, assistant answers, and plans. It cannot
+contain tool output or private reasoning. TypeSafe uses the context only to
+resolve references such as "continue" or "implement the plan."
+
+## Intent and lane rules
+
+Intent controls workspace access when the permission control is Auto-review.
+The allowed intent values are `discuss`, `review`, and `implement`.
+
+- `discuss` selects the architecture lane and a read-only sandbox.
+- `review` selects the review lane and a read-only sandbox.
+- `implement` can select an implementation lane and workspace-write access.
+
+An unknown intent stops the turn. It never enables write access.
+
+For an implementation request, the architecture score has first priority at
+its configured threshold. A local mechanical task uses the mechanical lane when
+its score reaches the threshold and its parallel-work score is less than 0.5.
+Otherwise, the explicit lane result applies. A mechanical result with a
+parallel-work score of 0.7 or more becomes an implementation result. An unknown
+or incompatible lane also becomes an implementation result.
+
+The internal lane IDs are `staff`, `review`, `cheap`, and `lead`. These IDs do
+not start skills or worker agents. The execution result is advice only.
+
+## Composer controls
+
+The model list contains Auto and each configured model ID. A manual model is
+valid for one successful turn or until the user removes a pin. A failed turn
+does not consume a one-turn model selection.
+
+Fast and Plan are separate Jev decisions. Both start off for each turn. Jev
+must return a positive decision to enable one. A manual On, Off, Work, or Plan
+selection has priority over Jev.
+
+Each turn sends `serviceTier`, `collaborationMode`, `approvalPolicy`,
+`approvalsReviewer`, and a sandbox policy. Thus, a turn does not inherit a Fast,
+Plan, or Full access state by mistake.
+
+Auto-review uses `on-request` with `auto_review`. Full access uses
+`dangerFullAccess` with `never`. Only the host configuration can select Full
+access. Jev has no permission field. Plan always has priority over Full access
+and uses a read-only sandbox.
+
+The provider sends Plan questions to Paseo. A skipped question returns an empty
+answer. The provider does not select an answer for the user.
+
+## Session ownership
+
+Paseo owns workspaces and agent tabs. The provider saves the Codex thread ID in
+Paseo session data. It also saves the limited route context and safe control
+values. It never saves Full access as a value to restore.
+
+A new turn can use a different model in the same Codex thread. A steering
+message bypasses classification and keeps the active turn settings.
+
+For history replay, the provider resumes the Codex thread. It emits saved user
+messages, assistant messages, reasoning summaries, and commands. It supports
+the old full-thread response and the paginated history response.
+
+The plugin does not run an HTTP server or an MCP server. It does not register a
+slash command. It does not inject agent configuration. It does not keep a
+second session registry.
+
+## Compatibility
+
+The plugin IDs and the settings file name stay stable. Old model fallbacks are
+resolved when settings load. Obsolete fields are removed on the next save. The
+old session registry file stays unchanged.
+
+The provider uses experimental Codex App Server fields for Plan questions and
+collaboration mode. The code was checked with Codex CLI 0.153.4. A compatible
+later version can also work.
+
+## Validation
+
+`npm run typecheck` checks all TypeScript source. `npm test` compiles and runs
+the Node.js tests. `npm run check` runs both commands.

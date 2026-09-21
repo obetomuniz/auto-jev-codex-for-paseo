@@ -1,0 +1,9 @@
+node_modules
+.test-build
+.codex-protocol
+.env
+.env.*
+!.env.example
+*.local.json
+*.log
+.DS_Store
