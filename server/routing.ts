@@ -62,6 +62,7 @@ export function selectCodexModel(lane: Lane, settings: ProviderSettings): string
     staff: "autoCodexModelStaff",
     review: "autoCodexModelReview",
     cheap: "autoCodexModelCheap",
+    standard: "autoCodexModelStandard",
     lead: "autoCodexModelLead",
   } as const;
   return settings[key[lane]].trim() || defaults[key[lane]];
@@ -72,6 +73,7 @@ export function selectCodexEffort(lane: Lane, settings: ProviderSettings): strin
     staff: "autoCodexEffortStaff",
     review: "autoCodexEffortReview",
     cheap: "autoCodexEffortCheap",
+    standard: "autoCodexEffortStandard",
     lead: "autoCodexEffortLead",
   } as const;
   return settings[key[lane]].trim() || defaults[key[lane]];

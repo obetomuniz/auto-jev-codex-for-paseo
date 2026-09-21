@@ -87,6 +87,11 @@ test("provider routes new turns in one thread and preserves steer, permissions, 
     catalog.catalog.models.map((model) => model.id).slice(0, 5),
     ["auto-jev-codex-for-paseo", "gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"],
   );
+  const descriptions = new Map(catalog.catalog.models.map((model) => [model.id, model.description]));
+  assert.match(descriptions.get("gpt-6-astra") ?? "", /Architecture/);
+  assert.match(descriptions.get("gpt-5.6-sol") ?? "", /Complex implementation/);
+  assert.match(descriptions.get("gpt-5.6-terra") ?? "", /Balanced choice/);
+  assert.match(descriptions.get("gpt-5.6-luna") ?? "", /small mechanical tasks/);
   const config = { cwd: process.cwd(), env: {}, mcpServers: {}, settings: {}, persist: true };
   await connection.send({ type: "session.open", requestId: "open", sessionId: "session-1", history: "skip", config });
   async function sendText(id: string, text: string, delivery: ProviderPrompt["delivery"] = "auto") {

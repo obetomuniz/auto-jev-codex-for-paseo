@@ -30,8 +30,11 @@ test("explicit intent prevents accidental review or implementation routing", () 
     parallel_edits: { type: "noul", noul: 0.7 },
   }), thresholds), "lead");
   assert.equal(pickLane(answers({
+    lane: { type: "choice", choice: "standard", probabilities: { standard: 1 }, confidence: 1 },
+  }), thresholds), "standard");
+  assert.equal(pickLane(answers({
     lane: { type: "choice", choice: "unknown", probabilities: {}, confidence: 0 },
-  }), thresholds), "lead");
+  }), thresholds), "standard");
 });
 
 test("Jev's intent, effort, and execution answers are validated before use", () => {
@@ -43,7 +46,7 @@ test("Jev's intent, effort, and execution answers are validated before use", () 
 });
 
 test("models and efforts use category defaults or trimmed custom values", () => {
-  for (const [lane, suffix] of [["staff", "Staff"], ["review", "Review"], ["cheap", "Cheap"], ["lead", "Lead"]] as const) {
+  for (const [lane, suffix] of [["staff", "Staff"], ["review", "Review"], ["cheap", "Cheap"], ["standard", "Standard"], ["lead", "Lead"]] as const) {
     const modelKey = `autoCodexModel${suffix}` as const;
     const effortKey = `autoCodexEffort${suffix}` as const;
     assert.equal(selectCodexModel(lane, { ...defaults, [modelKey]: " " }), defaults[modelKey]);
@@ -62,6 +65,7 @@ test("classification works without workspace or isolation questions and answers"
     assert.equal("intent" in request.questions, true);
     assert.equal("effort" in request.questions, true);
     assert.equal("execution" in request.questions, true);
+    assert.equal("standard" in request.questions.lane.criteria, true);
     return Response.json({ answers: answers() });
   });
   assert.deepEqual(await evaluateRoute({ apiKey: "test-key", model: "jev-latest", prompt: "Review the change" }), answers());

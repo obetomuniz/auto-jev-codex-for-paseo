@@ -9,10 +9,12 @@ export const settingsSchema = z.object({
   autoCodexModelStaff: z.string().default("gpt-6-astra"),
   autoCodexModelReview: z.string().default("gpt-6-astra"),
   autoCodexModelCheap: z.string().default("gpt-5.6-luna"),
+  autoCodexModelStandard: z.string().default("gpt-5.6-terra"),
   autoCodexModelLead: z.string().default("gpt-5.6-sol"),
   autoCodexEffortStaff: z.string().default("xhigh"),
   autoCodexEffortReview: z.string().default("xhigh"),
   autoCodexEffortCheap: z.string().default("low"),
+  autoCodexEffortStandard: z.string().default("medium"),
   autoCodexEffortLead: z.string().default("high"),
 });
 

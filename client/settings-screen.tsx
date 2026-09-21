@@ -120,8 +120,18 @@ export function SettingsScreen({ theme }: PluginSurfaceProps) {
             disabled={!ready}
           />
           <SettingsInput
+            key={`autoCodexModelStandard-${formKey}`}
+            label="Standard implementation"
+            initialValue={draft.autoCodexModelStandard}
+            onChangeText={(autoCodexModelStandard) =>
+              setDraft((current) => ({ ...current, autoCodexModelStandard }))
+            }
+            placeholder="gpt-5.6-terra"
+            disabled={!ready}
+          />
+          <SettingsInput
             key={`autoCodexModelLead-${formKey}`}
-            label="Implementation"
+            label="Complex implementation"
             initialValue={draft.autoCodexModelLead}
             onChangeText={(autoCodexModelLead) =>
               setDraft((current) => ({ ...current, autoCodexModelLead }))
@@ -160,8 +170,18 @@ export function SettingsScreen({ theme }: PluginSurfaceProps) {
             disabled={!ready}
           />
           <SettingsInput
+            key={`autoCodexEffortStandard-${formKey}`}
+            label="Standard implementation fallback effort"
+            initialValue={draft.autoCodexEffortStandard}
+            onChangeText={(autoCodexEffortStandard) =>
+              setDraft((current) => ({ ...current, autoCodexEffortStandard }))
+            }
+            placeholder="medium"
+            disabled={!ready}
+          />
+          <SettingsInput
             key={`autoCodexEffortLead-${formKey}`}
-            label="Implementation fallback effort"
+            label="Complex implementation fallback effort"
             initialValue={draft.autoCodexEffortLead}
             onChangeText={(autoCodexEffortLead) =>
               setDraft((current) => ({ ...current, autoCodexEffortLead }))

@@ -37,7 +37,8 @@ Set the model for each task category. Empty fields use these defaults:
 | Architecture | `gpt-6-astra` | `xhigh` |
 | Review | `gpt-6-astra` | `xhigh` |
 | Mechanical task | `gpt-5.6-luna` | `low` |
-| Implementation | `gpt-5.6-sol` | `high` |
+| Standard implementation | `gpt-5.6-terra` | `medium` |
+| Complex implementation | `gpt-5.6-sol` | `high` |
 
 Select **Auto Jev-Codex for Paseo** in a Paseo chat. Then send a text message.
 You can also select Astra, Sol, Terra, or Luna manually. Jev still chooses

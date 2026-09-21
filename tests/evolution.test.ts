@@ -147,6 +147,20 @@ test("manual model, speed, plan and permissions override routing without leaking
   assert.ok(!JSON.stringify(saved.persistence).includes("full-access"));
 });
 
+test("Auto routes standard implementation to Terra and complex implementation to Sol", async (t) => {
+  const h = await harness(t);
+  h.setResult(answers({ lane: choice("standard"), effort: choice("medium") }));
+  await h.send("Add a bounded validation rule with tests");
+  assert.equal(h.latest().model, "gpt-5.6-terra");
+  assert.equal(h.latest().effort, "medium");
+
+  h.complete();
+  h.setResult(answers({ lane: choice("lead"), effort: choice("high") }));
+  await h.send("Refactor the cross-service authentication flow");
+  assert.equal(h.latest().model, "gpt-5.6-sol");
+  assert.equal(h.latest().effort, "high");
+});
+
 test("failed classification never starts Codex and failed starts preserve one-shot selections", async (t) => {
   const h = await harness(t);
   await h.configure({ model: defaults.autoCodexModelCheap });

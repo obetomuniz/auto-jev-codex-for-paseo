@@ -841,11 +841,27 @@ class AutoJevCodexConnection implements ProviderConnection {
 
 async function modelCatalog() {
   const settings = await loadSettings();
-  const configuredModels = (["staff", "review", "cheap", "lead"] as const).map((lane) => selectCodexModel(lane, settings));
+  const configuredModels = (["staff", "review", "cheap", "standard", "lead"] as const).map((lane) => selectCodexModel(lane, settings));
   const ids = [...new Set([...MANUAL_MODEL_IDS, ...configuredModels])];
   return [autoModel(), ...ids.filter((id) => id !== MODEL_ID).map((id) => ({
-    id, label: id, description: "Manual model; Jev still classifies the request and selects effort.", isDefault: false,
+    id, label: id, description: manualModelDescription(id), isDefault: false,
   }))];
+}
+
+function manualModelDescription(id: string): string {
+  const effort = "Jev still classifies the request and selects effort.";
+  switch (id) {
+    case "gpt-6-astra":
+      return `Architecture, high-stakes review, and deep cross-cutting work. ${effort}`;
+    case "gpt-5.6-sol":
+      return `Complex implementation and difficult debugging. ${effort}`;
+    case "gpt-5.6-terra":
+      return `Balanced choice for standard implementation and bounded debugging. ${effort}`;
+    case "gpt-5.6-luna":
+      return `Fast, low-cost choice for small mechanical tasks. ${effort}`;
+    default:
+      return `Configured manual model. ${effort}`;
+  }
 }
 
 function autoModel() {

@@ -57,11 +57,13 @@ For an implementation request, the architecture score has first priority at
 its configured threshold. A local mechanical task uses the mechanical lane when
 its score reaches the threshold and its parallel-work score is less than 0.5.
 Otherwise, the explicit lane result applies. A mechanical result with a
-parallel-work score of 0.7 or more becomes an implementation result. An unknown
-or incompatible lane also becomes an implementation result.
+parallel-work score of 0.7 or more becomes a complex implementation result. An
+unknown or incompatible lane becomes a standard implementation result.
 
-The internal lane IDs are `staff`, `review`, `cheap`, and `lead`. These IDs do
-not start skills or worker agents. The execution result is advice only.
+The internal lane IDs are `staff`, `review`, `cheap`, `standard`, and `lead`.
+The standard lane uses Terra for bounded implementation. The lead lane uses Sol
+for difficult or cross-cutting implementation. These IDs do not start skills or
+worker agents. The execution result is advice only.
 
 ## Composer controls
 

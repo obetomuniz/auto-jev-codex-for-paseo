@@ -1,6 +1,6 @@
 import { readContext, type ContextEntry } from "./route-context";
 
-export const LANES = ["staff", "review", "cheap", "lead"] as const;
+export const LANES = ["staff", "review", "cheap", "standard", "lead"] as const;
 export type Lane = (typeof LANES)[number];
 
 export const INTENTS = ["discuss", "review", "implement"] as const;
@@ -80,10 +80,15 @@ export const ROUTE_QUESTIONS = {
         not_for: "Cross-cutting work, architecture, or independent review",
         examples: ["Rename foo to bar", "Fix the typo in the README"],
       },
+      standard: {
+        what: "Normal implementation or debugging with a bounded scope",
+        not_for: "A one-file mechanical edit, architecture-only question, review-only request, or difficult cross-cutting work",
+        examples: ["Add a form validation rule with tests", "Fix this bounded API error"],
+      },
       lead: {
-        what: "Implementation or debugging that the current coding agent should own",
-        not_for: "Architecture-only questions or review-only requests",
-        examples: ["Add CSV export with tests", "This login flow 500s, find why"],
+        what: "Complex implementation, difficult debugging, or cross-cutting work that needs stronger coding judgment",
+        not_for: "A small mechanical edit, routine bounded implementation, architecture-only question, or review-only request",
+        examples: ["Refactor the authentication flow across services", "Trace and fix this intermittent production failure"],
       },
     },
   },
@@ -219,7 +224,7 @@ export function pickLane(
     if (choice === "cheap" && answers.parallel_edits.noul >= 0.7) return "lead";
     return choice;
   }
-  return "lead";
+  return "standard";
 }
 
 function knownChoice<T extends readonly string[]>(answer: ChoiceAnswer, choices: T): T[number] | null {
