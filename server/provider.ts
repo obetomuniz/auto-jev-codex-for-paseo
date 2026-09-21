@@ -19,6 +19,7 @@ import { collaborationModes, controlSettings, parseControls, type Controls } fro
 
 const PROVIDER_ID = "auto-jev-codex-for-paseo";
 const MODEL_ID = "auto-jev-codex-for-paseo";
+const MANUAL_MODEL_IDS = ["gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"] as const;
 const SUPPORTED_CAPABILITIES = [
   "prompt.message",
   "prompt.image",
@@ -840,7 +841,8 @@ class AutoJevCodexConnection implements ProviderConnection {
 
 async function modelCatalog() {
   const settings = await loadSettings();
-  const ids = [...new Set((["staff", "review", "cheap", "lead"] as const).map((lane) => selectCodexModel(lane, settings)))];
+  const configuredModels = (["staff", "review", "cheap", "lead"] as const).map((lane) => selectCodexModel(lane, settings));
+  const ids = [...new Set([...MANUAL_MODEL_IDS, ...configuredModels])];
   return [autoModel(), ...ids.filter((id) => id !== MODEL_ID).map((id) => ({
     id, label: id, description: "Manual model; Jev still classifies the request and selects effort.", isDefault: false,
   }))];

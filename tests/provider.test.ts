@@ -80,6 +80,13 @@ test("provider routes new turns in one thread and preserves steer, permissions, 
   assert.ok(connection.capabilities.includes("prompt.image"));
   const events: ProviderEvent[] = [];
   connection.onEvent((event) => events.push(event));
+  await connection.send({ type: "catalog", requestId: "catalog" });
+  const catalog = events.find((event) => event.type === "catalog");
+  assert.ok(catalog);
+  assert.deepEqual(
+    catalog.catalog.models.map((model) => model.id).slice(0, 5),
+    ["auto-jev-codex-for-paseo", "gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"],
+  );
   const config = { cwd: process.cwd(), env: {}, mcpServers: {}, settings: {}, persist: true };
   await connection.send({ type: "session.open", requestId: "open", sessionId: "session-1", history: "skip", config });
   async function sendText(id: string, text: string, delivery: ProviderPrompt["delivery"] = "auto") {
