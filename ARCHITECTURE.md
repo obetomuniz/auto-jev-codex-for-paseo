@@ -1,6 +1,6 @@
 # Architecture
 
-Auto Jev-Codex has one main flow. A user selects the provider in Paseo and
+Auto Jev-Codex for Paseo has one main flow. A user selects the provider in Paseo and
 sends a message. The plugin classifies the message and starts a Codex turn.
 
 ## Modules

@@ -17,15 +17,22 @@ import { loadSettings } from "./settings-store";
 import { appendContext, readContext, type ContextEntry } from "./route-context";
 import { collaborationModes, controlSettings, parseControls, type Controls } from "./session-controls";
 
-const PROVIDER_ID = "auto-jev-codex";
-const MODEL_ID = "auto-jev-codex";
+const PROVIDER_ID = "auto-jev-codex-for-paseo";
+const MODEL_ID = "auto-jev-codex-for-paseo";
 const SUPPORTED_CAPABILITIES = [
   "prompt.message",
+  "prompt.image",
   "prompt.steer",
   "permission",
   "session.persistence",
   "session.configure",
 ] as const;
+
+export const MAX_IMAGES_PER_MESSAGE = 4;
+export const MAX_IMAGE_BYTES_PER_IMAGE = 5 * 1024 * 1024;
+
+const SUPPORTED_IMAGE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
+const MAX_IMAGE_BASE64_LENGTH = Math.ceil(MAX_IMAGE_BYTES_PER_IMAGE / 3) * 4;
 
 type AppServerTurn = { id: string; items?: unknown[] };
 type AppServerThread = { id: string; turns?: AppServerTurn[] };
@@ -46,6 +53,16 @@ type CodexSandboxPolicy =
     };
 type ComposerPrompt = Extract<ProviderInput, { type: "session.prompt" }>["prompt"];
 type ComposerMessageContent = Extract<ComposerPrompt["input"], { type: "message" }>["content"];
+type ComposerImageContent = Extract<ComposerMessageContent[number], { type: "image" }>;
+type CodexTurnInput =
+  | { type: "text"; text: string; text_elements: [] }
+  | { type: "image"; url: string };
+type PreparedComposerMessage = {
+  displayText: string;
+  routeText: string;
+  contextText: string;
+  codexInput: CodexTurnInput[];
+};
 
 type SessionRuntime = {
   id: string;
@@ -76,7 +93,7 @@ type PendingPermission = {
 export function createAutoJevCodexProvider(): ProviderRegistration {
   return {
     id: PROVIDER_ID,
-    label: "Auto Jev-Codex",
+    label: "Auto Jev-Codex for Paseo",
     description: "Jev selects a Codex model for every new turn using the local Codex session.",
     async connect(request) {
       return new AutoJevCodexConnection(
@@ -140,7 +157,7 @@ class AutoJevCodexConnection implements ProviderConnection {
           this.emit({
             type: "request.failed",
             requestId: input.requestId,
-            error: { message: `${input.type} is not supported by Auto Jev-Codex.` },
+            error: { message: `${input.type} is not supported by Auto Jev-Codex for Paseo.` },
           });
         }
     }
@@ -156,7 +173,7 @@ class AutoJevCodexConnection implements ProviderConnection {
       this.emit({
         type: "request.failed",
         requestId: input.requestId,
-        error: { message: "Auto Jev-Codex session is already open." },
+        error: { message: "Auto Jev-Codex for Paseo session is already open." },
       });
       return;
     }
@@ -282,7 +299,7 @@ class AutoJevCodexConnection implements ProviderConnection {
   ): Promise<void> {
     const session = this.sessions.get(sessionId);
     if (!session || session.closed) {
-      this.emitPromptFailure(sessionId, prompt.clientMessageId, "Auto Jev-Codex session is not open.");
+      this.emitPromptFailure(sessionId, prompt.clientMessageId, "Auto Jev-Codex for Paseo session is not open.");
       return;
     }
     if (session.starting || (session.activeTurnId && prompt.delivery !== "steer")) {
@@ -290,12 +307,18 @@ class AutoJevCodexConnection implements ProviderConnection {
       return;
     }
     if (prompt.input.type !== "message") {
-      this.emitPromptFailure(sessionId, prompt.clientMessageId, "Composer commands are not supported by Auto Jev-Codex.");
+      this.emitPromptFailure(sessionId, prompt.clientMessageId, "Composer commands are not supported by Auto Jev-Codex for Paseo.");
       return;
     }
-    const text = messageText(prompt.input.content);
-    if (!text) {
-      this.emitPromptFailure(sessionId, prompt.clientMessageId, "Auto Jev-Codex currently supports text messages only.");
+    let message: PreparedComposerMessage;
+    try {
+      message = prepareComposerMessage(prompt.input.content);
+    } catch (error) {
+      this.emitPromptFailure(
+        sessionId,
+        prompt.clientMessageId,
+        error instanceof Error ? error.message : "Could not read the attached image.",
+      );
       return;
     }
 
@@ -305,7 +328,7 @@ class AutoJevCodexConnection implements ProviderConnection {
       item: {
         type: "user_message",
         id: prompt.clientMessageId,
-        text,
+        text: message.displayText,
         clientMessageId: prompt.clientMessageId,
       },
     });
@@ -321,9 +344,9 @@ class AutoJevCodexConnection implements ProviderConnection {
           threadId: session.threadId,
           expectedTurnId: session.activeTurnId,
           clientUserMessageId: prompt.clientMessageId,
-          input: [{ type: "text", text, text_elements: [] }],
+          input: message.codexInput,
         });
-        this.remember(session, { id: prompt.clientMessageId, role: "user", text });
+        this.remember(session, { id: prompt.clientMessageId, role: "user", text: message.contextText });
         this.emit({
           type: "session.prompt_result",
           sessionId,
@@ -334,7 +357,7 @@ class AutoJevCodexConnection implements ProviderConnection {
       }
 
       if (session.threadId && !session.contextLoaded) await this.restoreHistory(session, false);
-      const route = await routePromptWithJev(text, session.routingContext);
+      const route = await routePromptWithJev(message.routeText, session.routingContext);
       if (session.closed) return;
       const manual = session.selectedModel !== MODEL_ID;
       const model = manual ? session.selectedModel : route.model;
@@ -355,11 +378,15 @@ class AutoJevCodexConnection implements ProviderConnection {
       const codex = await this.ensureCodex(session, model);
       if (session.closed) return;
       const previousContext = session.routingContext;
-      session.routingContext = appendContext(previousContext, { id: prompt.clientMessageId, role: "user", text });
+      session.routingContext = appendContext(previousContext, {
+        id: prompt.clientMessageId,
+        role: "user",
+        text: message.contextText,
+      });
       const response = await codex.request<{ turn: AppServerTurn }>("turn/start", {
         threadId: session.threadId,
         clientUserMessageId: prompt.clientMessageId,
-        input: [{ type: "text", text, text_elements: [] }],
+        input: message.codexInput,
         model,
         effort: route.effort,
         sandboxPolicy: plan ? { type: "readOnly", networkAccess: true }
@@ -396,7 +423,7 @@ class AutoJevCodexConnection implements ProviderConnection {
       this.emitPromptFailure(
         sessionId,
         prompt.clientMessageId,
-        error instanceof Error ? error.message : "Could not start the Auto Jev-Codex turn.",
+        error instanceof Error ? error.message : "Could not start the Auto Jev-Codex for Paseo turn.",
       );
     } finally {
       session.starting = false;
@@ -700,7 +727,7 @@ class AutoJevCodexConnection implements ProviderConnection {
   ): Promise<unknown> {
     if (request.method === "item/tool/requestUserInput") return this.requestQuestions(session, request);
     if (!isApprovalRequest(request.method)) {
-      throw new Error(`Auto Jev-Codex does not yet support '${request.method}'.`);
+      throw new Error(`Auto Jev-Codex for Paseo does not yet support '${request.method}'.`);
     }
     const permissionId = `codex:${String(request.id)}`;
     const params = asRecord(request.params) ?? {};
@@ -735,7 +762,7 @@ class AutoJevCodexConnection implements ProviderConnection {
     const session = this.sessions.get(sessionId);
     const pending = session?.permissions.get(permissionId);
     if (!session || !pending) {
-      throw new Error(`Unknown Auto Jev-Codex permission '${permissionId}'.`);
+      throw new Error(`Unknown Auto Jev-Codex for Paseo permission '${permissionId}'.`);
     }
     if (pending.question) {
       let answers: string[] = [];
@@ -787,7 +814,7 @@ class AutoJevCodexConnection implements ProviderConnection {
     session.closed = true;
     this.sessions.delete(sessionId);
     for (const pending of session.permissions.values()) {
-      pending.reject(new Error("Auto Jev-Codex session closed."));
+      pending.reject(new Error("Auto Jev-Codex for Paseo session closed."));
     }
     session.permissions.clear();
     await session.codex?.close();
@@ -822,7 +849,7 @@ async function modelCatalog() {
 function autoModel() {
   return {
     id: MODEL_ID,
-    label: "Auto Jev-Codex",
+    label: "Auto Jev-Codex for Paseo",
     description: "Jev chooses the Codex model before every new turn.",
     isDefault: true,
   };
@@ -839,6 +866,70 @@ function sandboxForIntent(intent: Intent, cwd: string): CodexSandboxPolicy {
     };
   }
   return { type: "readOnly", networkAccess: true };
+}
+
+function prepareComposerMessage(content: ComposerMessageContent): PreparedComposerMessage {
+  const text = messageText(content);
+  const images = content.filter((part): part is ComposerImageContent => part.type === "image");
+  if (!text && images.length === 0) {
+    throw new Error("Add a message or an image before sending.");
+  }
+  if (images.length > MAX_IMAGES_PER_MESSAGE) {
+    throw new Error(`Auto Jev-Codex for Paseo supports up to ${MAX_IMAGES_PER_MESSAGE} images per message.`);
+  }
+
+  const codexInput: CodexTurnInput[] = text
+    ? [{ type: "text", text, text_elements: [] }]
+    : [];
+  for (const [index, image] of images.entries()) {
+    codexInput.push(toCodexImageInput(image, index + 1));
+  }
+
+  const imageDescription = images.length === 1 ? "1 image attached." : `${images.length} images attached.`;
+  return {
+    displayText: text || `[${imageDescription}]`,
+    // TypeSafe classifies the message text. Image bytes stay local to Codex.
+    routeText: text || "Analyze the attached image.",
+    contextText: text ? `${text}\n[${imageDescription}]` : imageDescription,
+    codexInput,
+  };
+}
+
+function toCodexImageInput(image: ComposerImageContent, index: number): CodexTurnInput {
+  if (!SUPPORTED_IMAGE_MIME_TYPES.has(image.mimeType)) {
+    throw new Error(`Image ${index} has unsupported type '${image.mimeType}'. Use PNG, JPEG, WebP, or GIF.`);
+  }
+  if (image.data.length > MAX_IMAGE_BASE64_LENGTH) {
+    throw new Error(`Image ${index} exceeds the ${MAX_IMAGE_BYTES_PER_IMAGE / 1024 / 1024} MiB limit.`);
+  }
+  const byteLength = base64ByteLength(image.data, index);
+  if (byteLength > MAX_IMAGE_BYTES_PER_IMAGE) {
+    throw new Error(`Image ${index} exceeds the ${MAX_IMAGE_BYTES_PER_IMAGE / 1024 / 1024} MiB limit.`);
+  }
+
+  return { type: "image", url: `data:${image.mimeType};base64,${image.data}` };
+}
+
+function base64ByteLength(data: string, imageIndex: number): number {
+  if (!data || data.length % 4 !== 0) {
+    throw new Error(`Image ${imageIndex} is not valid Base64 image data.`);
+  }
+  const firstPadding = data.indexOf("=");
+  const padding = firstPadding < 0 ? 0 : data.length - firstPadding;
+  if (padding > 2 || (padding > 0 && firstPadding !== data.length - padding)) {
+    throw new Error(`Image ${imageIndex} is not valid Base64 image data.`);
+  }
+  const dataLength = data.length - padding;
+  for (let offset = 0; offset < dataLength; offset += 1) {
+    const code = data.charCodeAt(offset);
+    const valid = (code >= 48 && code <= 57)
+      || (code >= 65 && code <= 90)
+      || (code >= 97 && code <= 122)
+      || code === 43
+      || code === 47;
+    if (!valid) throw new Error(`Image ${imageIndex} is not valid Base64 image data.`);
+  }
+  return (data.length / 4) * 3 - padding;
 }
 
 function messageText(content: ComposerMessageContent): string {

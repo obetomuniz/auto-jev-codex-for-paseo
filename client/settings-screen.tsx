@@ -20,7 +20,7 @@ export function SettingsScreen({ theme }: PluginSurfaceProps) {
   const getSettings = useRpc(getSettingsRpc);
   const saveSettings = useRpc(saveSettingsRpc);
   const loaded = useQuery({
-    queryKey: ["auto-jev-codex", "settings"],
+    queryKey: ["auto-jev-codex-for-paseo", "settings"],
     queryFn: () => getSettings({}),
   });
   const [draft, setDraft] = useState<PublicSettings & { apiKey: string }>({
@@ -61,7 +61,7 @@ export function SettingsScreen({ theme }: PluginSurfaceProps) {
     <>
       <SettingsSection
         title="TypeSafe"
-        info="Each new message and up to six recent user messages, answers, or plans (1,000 characters each) are sent to TypeSafe. Select Auto or a manual model in the composer. The key is stored in ~/.paseo/auto-jev-codex.local.json."
+        info="Each new message and up to six recent user messages, answers, or plans (1,000 characters each) are sent to TypeSafe. Select Auto or a manual model in the composer. The key is stored in ~/.paseo/auto-jev-codex-for-paseo.local.json."
       >
         <SettingsCard>
           <SettingsInput
@@ -85,7 +85,7 @@ export function SettingsScreen({ theme }: PluginSurfaceProps) {
         </SettingsCard>
       </SettingsSection>
       <SettingsSection
-        title="Auto Jev-Codex"
+        title="Auto Jev-Codex for Paseo"
         info="Choose the model fallback for each task category. Jev chooses effort on every new turn; an effort value here is used only when its answer is unavailable."
       >
         <SettingsCard>

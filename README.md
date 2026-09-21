@@ -1,6 +1,6 @@
 # Auto Jev-Codex for Paseo
 
-Auto Jev-Codex is a model router for [Paseo](https://github.com/getpaseo/paseo).
+Auto Jev-Codex for Paseo is a model router for [Paseo](https://github.com/getpaseo/paseo).
 It uses TypeSafe Jev to classify each new message. It then starts a Codex turn
 with the selected model, reasoning effort, work mode, and speed.
 
@@ -27,7 +27,7 @@ paseo plugin install .
 
 On Windows, use `npm.cmd` if PowerShell blocks `npm.ps1`.
 
-Open **Settings → Plugins → Auto Jev-Codex**. Set the TypeSafe API key. You can
+Open **Settings → Plugins → Auto Jev-Codex for Paseo**. Set the TypeSafe API key. You can
 also set `TYPESAFE_API_KEY` in the Paseo daemon environment.
 
 Set the model for each task category. Empty fields use these defaults:
@@ -39,7 +39,7 @@ Set the model for each task category. Empty fields use these defaults:
 | Mechanical task | `gpt-5.6-luna` | `low` |
 | Implementation | `gpt-5.6-sol` | `high` |
 
-Select **Auto Jev-Codex** in a Paseo chat. Then send a text message.
+Select **Auto Jev-Codex for Paseo** in a Paseo chat. Then send a text message.
 
 ## Composer controls
 
@@ -83,7 +83,7 @@ plugin stores the short routing context in Paseo session data. It can rebuild
 this context from the local Codex history.
 
 The plugin stores a TypeSafe API key in
-`~/.paseo/auto-jev-codex.local.json` as plain text. A key in this file has
+`~/.paseo/auto-jev-codex-for-paseo.local.json` as plain text. A key in this file has
 priority over `TYPESAFE_API_KEY`. The settings API does not return the key to
 the client. An empty key field keeps the saved key.
 
@@ -94,9 +94,16 @@ For Auto-review, discussion and review turns use a read-only sandbox. An
 explicit implementation request uses workspace-write access for the current
 Paseo workspace. Unknown intent values and invalid scores stop the turn.
 
-The provider supports text, streamed responses, Plan questions, approvals,
-interrupts, steering, and history replay. It does not support images or
+The provider supports text, images, streamed responses, Plan questions,
+approvals, interrupts, steering, and history replay. It does not support
 composer commands.
+
+Paseo renders the image preview in its native composer. Auto Jev-Codex for Paseo sends
+the image to Codex with the message. It sends only the message text to
+TypeSafe for routing.
+
+Attach up to four PNG, JPEG, WebP, or GIF images in one message. Each image
+must be 5 MiB or smaller.
 
 ## Develop
 
@@ -118,22 +125,14 @@ Report security problems as described in [SECURITY.md](SECURITY.md).
 Reload the plugin after you update its source:
 
 ```sh
-paseo plugin reload auto-jev-codex
+paseo plugin reload auto-jev-codex-for-paseo
 ```
-
-This plugin replaces the old `paseo-jev-route` package. The first settings read
-can import `~/.paseo/jev-route.local.json`. The plugin does not delete the old
-file or the old `jev-route-sessions.json` file.
-
-An agent from the old plugin can contain a saved `jev-route` MCP entry. Create
-a new agent after the reload. Remove the old MCP entry if it is still present.
 
 ## References
 
 - [Codex App Server](https://developers.openai.com/codex/app-server)
 - [Codex Auto-review](https://developers.openai.com/codex/sandboxing/auto-review)
 - [Codex speed settings](https://developers.openai.com/codex/speed)
-- [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/)
 
 ## License
 

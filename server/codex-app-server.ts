@@ -82,8 +82,8 @@ export class CodexAppServer {
 
     await this.request("initialize", {
       clientInfo: {
-        name: "auto-jev-codex",
-        title: "Auto Jev-Codex",
+        name: "auto-jev-codex-for-paseo",
+        title: "Auto Jev-Codex for Paseo",
         version: "0.2.0",
       },
       capabilities: {

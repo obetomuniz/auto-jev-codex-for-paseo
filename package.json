@@ -1,25 +1,28 @@
 {
-  "name": "auto-jev-codex",
+  "name": "auto-jev-codex-for-paseo",
   "private": true,
   "version": "0.2.0",
   "description": "A Paseo provider that uses TypeSafe Jev to route each Codex turn.",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/obetomuniz/auto-jev-codex.git"
+    "url": "git+https://github.com/obetomuniz/auto-jev-codex-for-paseo.git"
   },
-  "homepage": "https://github.com/obetomuniz/auto-jev-codex#readme",
+  "homepage": "https://github.com/obetomuniz/auto-jev-codex-for-paseo#readme",
   "bugs": {
-    "url": "https://github.com/obetomuniz/auto-jev-codex/issues"
+    "url": "https://github.com/obetomuniz/auto-jev-codex-for-paseo/issues"
   },
   "engines": {
     "node": ">=24"
   },
   "keywords": [
     "paseo",
+    "jev",
     "codex",
     "typesafe",
-    "model-router"
+    "model-router",
+    "system1",
+    "system-one"
   ],
   "scripts": {
     "check": "npm run typecheck && npm test",

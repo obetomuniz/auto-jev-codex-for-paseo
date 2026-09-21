@@ -1,9 +1,14 @@
 import assert from "node:assert/strict";
+import { Buffer } from "node:buffer";
 import fs from "node:fs/promises";
 import { test } from "node:test";
 import type { ProviderEvent, ProviderPrompt } from "@getpaseo/plugin/server/provider";
 import { CodexAppServer, type CodexNotification, type CodexServerRequest } from "../server/codex-app-server";
-import { createAutoJevCodexProvider } from "../server/provider";
+import {
+  createAutoJevCodexProvider,
+  MAX_IMAGE_BYTES_PER_IMAGE,
+  MAX_IMAGES_PER_MESSAGE,
+} from "../server/provider";
 import { defaults } from "../shared/settings";
 import { answers } from "./fixtures";
 
@@ -18,8 +23,10 @@ test("provider routes new turns in one thread and preserves steer, permissions, 
   };
   t.mock.method(fs, "readFile", async () => JSON.stringify(settings));
   let classifications = 0;
-  t.mock.method(globalThis, "fetch", async () => {
+  const classificationBodies: string[] = [];
+  t.mock.method(globalThis, "fetch", async (_input: unknown, init?: RequestInit) => {
     classifications += 1;
+    if (typeof init?.body === "string") classificationBodies.push(init.body);
     return Response.json({ answers: answers(classifications === 1
       ? {
           effort: { type: "choice", choice: "low", probabilities: { low: 1 }, confidence: 1 },
@@ -67,9 +74,10 @@ test("provider routes new turns in one thread and preserves steer, permissions, 
   });
 
   const connection = await createAutoJevCodexProvider().connect({
-    versions: [1], capabilities: ["prompt.message", "prompt.steer", "permission", "session.persistence"],
+    versions: [1], capabilities: ["prompt.message", "prompt.image", "prompt.steer", "permission", "session.persistence"],
   });
   t.after(() => connection.close());
+  assert.ok(connection.capabilities.includes("prompt.image"));
   const events: ProviderEvent[] = [];
   connection.onEvent((event) => events.push(event));
   const config = { cwd: process.cwd(), env: {}, mcpServers: {}, settings: {}, persist: true };
@@ -126,10 +134,83 @@ test("provider routes new turns in one thread and preserves steer, permissions, 
   assert.ok(restored.some((event) => event.item.type === "user_message" && event.item.text === "Earlier question"));
   assert.ok(restored.some((event) => event.item.type === "assistant_message" && event.item.text === "Earlier answer"));
   assert.ok(restored.some((event) => event.item.type === "tool_call" && event.item.name === "command"));
-  await sendText("message-4", "Continue reviewing");
+  await connection.send({
+    type: "session.prompt",
+    sessionId: "session-1",
+    prompt: {
+      clientMessageId: "message-4",
+      delivery: "auto",
+      input: {
+        type: "message",
+        content: [
+          { type: "text", text: "Continue reviewing" },
+          { type: "image", mimeType: "image/png", data: "AQID" },
+        ],
+      },
+    },
+  });
   assert.equal(calls.filter((call) => call.method === "thread/start").length, 1);
   assert.equal(calls.find((call) => call.method === "thread/resume")?.params.threadId, "thread-1");
+  const imageTurn = calls.filter((call) => call.method === "turn/start").at(-1);
+  assert.deepEqual(imageTurn?.params.input, [
+    { type: "text", text: "Continue reviewing", text_elements: [] },
+    { type: "image", url: "data:image/png;base64,AQID" },
+  ]);
+  assert.ok(classificationBodies.every((body) => !body.includes("AQID")));
   assert.equal(events.some((event) => event.type === "session.prompt_result" && event.result.type === "failed"), false);
+});
+
+test("provider rejects images that exceed explicit message limits", async (t) => {
+  t.mock.method(fs, "readFile", async () => JSON.stringify({ ...defaults, apiKey: "test-key" }));
+  let classifications = 0;
+  t.mock.method(globalThis, "fetch", async () => {
+    classifications += 1;
+    return Response.json({ answers: answers() });
+  });
+
+  const connection = await createAutoJevCodexProvider().connect({
+    versions: [1], capabilities: ["prompt.message", "prompt.image"],
+  });
+  t.after(() => connection.close());
+  const events: ProviderEvent[] = [];
+  connection.onEvent((event) => events.push(event));
+  await connection.send({
+    type: "session.open",
+    requestId: "open",
+    sessionId: "session-images",
+    history: "skip",
+    config: { cwd: process.cwd(), env: {}, mcpServers: {}, settings: {}, persist: true },
+  });
+
+  const send = async (clientMessageId: string, content: ProviderPrompt["input"] & { type: "message" }) => {
+    await connection.send({
+      type: "session.prompt",
+      sessionId: "session-images",
+      prompt: { clientMessageId, delivery: "auto", input: content },
+    });
+  };
+
+  await send("too-many", {
+    type: "message",
+    content: Array.from({ length: MAX_IMAGES_PER_MESSAGE + 1 }, () => ({
+      type: "image" as const,
+      data: "AQ==",
+      mimeType: "image/png",
+    })),
+  });
+  const tooLarge = Buffer.alloc(MAX_IMAGE_BYTES_PER_IMAGE + 1).toString("base64");
+  await send("too-large", {
+    type: "message",
+    content: [{ type: "image", data: tooLarge, mimeType: "image/png" }],
+  });
+
+  assert.equal(classifications, 0);
+  const failures = events.flatMap((event) => {
+    if (event.type !== "session.prompt_result" || event.result.type !== "failed") return [];
+    return [{ clientMessageId: event.clientMessageId, message: event.result.error.message }];
+  });
+  assert.match(failures.find((event) => event.clientMessageId === "too-many")?.message ?? "", /up to 4 images/);
+  assert.match(failures.find((event) => event.clientMessageId === "too-large")?.message ?? "", /5 MiB limit/);
 });
 
 test("provider replays paginated Codex history", async (t) => {

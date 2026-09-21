@@ -4,8 +4,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { z } from "zod";
 import { defaults, settingsSchema, toPublic, type ProviderSettings } from "../shared/settings";
 
-const SETTINGS_PATH = join(homedir(), ".paseo", "auto-jev-codex.local.json");
-const LEGACY_SETTINGS_PATH = join(homedir(), ".paseo", "jev-route.local.json");
+const SETTINGS_PATH = join(homedir(), ".paseo", "auto-jev-codex-for-paseo.local.json");
 
 let cached: ProviderSettings = defaults;
 
@@ -39,30 +38,17 @@ function codexModel(value: string | undefined): string | null {
 
 export async function loadSettings(): Promise<ProviderSettings> {
   try {
-    const raw = await readCurrentOrLegacySettings();
+    const raw = await readFile(SETTINGS_PATH, "utf8");
     cached = parseStoredSettings(JSON.parse(raw));
   } catch (error) {
     if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
       cached = defaults;
     } else {
-      console.error("Failed to read Auto Jev-Codex settings; using defaults.");
+      console.error("Failed to read Auto Jev-Codex for Paseo settings; using defaults.");
       cached = defaults;
     }
   }
   return cached;
-}
-
-async function readCurrentOrLegacySettings(): Promise<string> {
-  try {
-    return await readFile(SETTINGS_PATH, "utf8");
-  } catch (error) {
-    if (!isNotFound(error)) throw error;
-    return readFile(LEGACY_SETTINGS_PATH, "utf8");
-  }
-}
-
-function isNotFound(error: unknown): boolean {
-  return Boolean(error && typeof error === "object" && "code" in error && error.code === "ENOENT");
 }
 
 export async function saveSettings(values: ProviderSettings) {

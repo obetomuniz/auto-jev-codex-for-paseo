@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for your interest in Auto Jev-Codex.
+Thank you for your interest in Auto Jev-Codex for Paseo.
 
 ## Before you start
 

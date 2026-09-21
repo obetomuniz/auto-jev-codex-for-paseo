@@ -29,7 +29,7 @@ export async function routePromptWithJev(prompt: string, context: ContextEntry[]
   const apiKey = settings.apiKey.trim() || process.env.TYPESAFE_API_KEY?.trim() || "";
   if (!apiKey) {
     throw new Error(
-      "Configure the TypeSafe key in Settings > Plugins > Auto Jev-Codex, or set TYPESAFE_API_KEY on the daemon.",
+      "Configure the TypeSafe key in Settings > Plugins > Auto Jev-Codex for Paseo, or set TYPESAFE_API_KEY on the daemon.",
     );
   }
 
