@@ -5,7 +5,7 @@ import { test } from "node:test";
 import type { ProviderEvent, ProviderPrompt } from "@getpaseo/plugin/server/provider";
 import { CodexAppServer, type CodexNotification, type CodexServerRequest } from "../server/codex-app-server";
 import {
-  createAutoJevCodexProvider,
+  createAutoModeProvider,
   MAX_IMAGE_BYTES_PER_IMAGE,
   MAX_IMAGES_PER_MESSAGE,
 } from "../server/provider";
@@ -34,6 +34,7 @@ test("provider routes new turns in one thread and preserves steer, permissions, 
         }
       : {
           intent: { type: "choice", choice: "review", probabilities: { review: 1 }, confidence: 1 },
+          lane: { type: "choice", choice: "review", probabilities: { review: 1 }, confidence: 1 },
           independent_review: { type: "noul", noul: 1 },
         }) });
   });
@@ -73,7 +74,7 @@ test("provider routes new turns in one thread and preserves steer, permissions, 
     throw new Error(`Unexpected Codex request: ${method}`);
   });
 
-  const connection = await createAutoJevCodexProvider().connect({
+  const connection = await createAutoModeProvider().connect({
     versions: [1], capabilities: ["prompt.message", "prompt.image", "prompt.steer", "permission", "session.persistence"],
   });
   t.after(() => connection.close());
@@ -85,7 +86,7 @@ test("provider routes new turns in one thread and preserves steer, permissions, 
   assert.ok(catalog);
   assert.deepEqual(
     catalog.catalog.models.map((model) => model.id).slice(0, 5),
-    ["auto-jev-codex-for-paseo", "gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"],
+    ["auto-mode-for-paseo", "gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"],
   );
   const descriptions = new Map(catalog.catalog.models.map((model) => [model.id, model.description]));
   assert.match(descriptions.get("gpt-6-astra") ?? "", /Architecture/);
@@ -180,7 +181,7 @@ test("provider rejects images that exceed explicit message limits", async (t) =>
     return Response.json({ answers: answers() });
   });
 
-  const connection = await createAutoJevCodexProvider().connect({
+  const connection = await createAutoModeProvider().connect({
     versions: [1], capabilities: ["prompt.message", "prompt.image"],
   });
   t.after(() => connection.close());
@@ -253,7 +254,7 @@ test("provider replays paginated Codex history", async (t) => {
     throw new Error(`Unexpected Codex request: ${method}`);
   });
 
-  const connection = await createAutoJevCodexProvider().connect({
+  const connection = await createAutoModeProvider().connect({
     versions: [1], capabilities: ["prompt.message", "session.persistence"],
   });
   t.after(() => connection.close());

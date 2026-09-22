@@ -1,5 +1,5 @@
 {
-  "id": "auto-jev-codex-for-paseo",
+  "id": "auto-mode-for-paseo",
   "requirements": {
     "paseo": ">=0.8.0"
   }

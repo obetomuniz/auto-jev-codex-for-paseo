@@ -11,14 +11,14 @@ import {
   type ProviderTimelineItem,
 } from "@getpaseo/plugin/server/provider";
 import { CodexAppServer, type CodexNotification, type CodexServerRequest } from "./codex-app-server";
-import { type Intent } from "./jev";
-import { routePromptWithJev, selectCodexModel } from "./routing";
+import { type Intent } from "./classifier";
+import { routePrompt, selectCodexModel } from "./routing";
 import { loadSettings } from "./settings-store";
 import { appendContext, readContext, type ContextEntry } from "./route-context";
 import { collaborationModes, controlSettings, parseControls, type Controls } from "./session-controls";
 
-const PROVIDER_ID = "auto-jev-codex-for-paseo";
-const MODEL_ID = "auto-jev-codex-for-paseo";
+const PROVIDER_ID = "auto-mode-for-paseo";
+const MODEL_ID = "auto-mode-for-paseo";
 const MANUAL_MODEL_IDS = ["gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"] as const;
 const SUPPORTED_CAPABILITIES = [
   "prompt.message",
@@ -91,20 +91,20 @@ type PendingPermission = {
   question?: { id: string; options: string[] };
 };
 
-export function createAutoJevCodexProvider(): ProviderRegistration {
+export function createAutoModeProvider(): ProviderRegistration {
   return {
     id: PROVIDER_ID,
-    label: "Auto Jev-Codex for Paseo",
-    description: "Jev selects a Codex model for every new turn using the local Codex session.",
+    label: "Auto Mode for Paseo",
+    description: "The classifier selects a Codex model for every new turn using the local Codex session.",
     async connect(request) {
-      return new AutoJevCodexConnection(
+      return new AutoModeConnection(
         negotiateProviderCapabilities(request.capabilities, SUPPORTED_CAPABILITIES),
       );
     },
   };
 }
 
-class AutoJevCodexConnection implements ProviderConnection {
+class AutoModeConnection implements ProviderConnection {
   readonly version = 1;
   readonly capabilities: readonly string[];
   private readonly listeners = new Set<(event: ProviderEvent) => void>();
@@ -158,7 +158,7 @@ class AutoJevCodexConnection implements ProviderConnection {
           this.emit({
             type: "request.failed",
             requestId: input.requestId,
-            error: { message: `${input.type} is not supported by Auto Jev-Codex for Paseo.` },
+            error: { message: `${input.type} is not supported by Auto Mode for Paseo.` },
           });
         }
     }
@@ -174,12 +174,13 @@ class AutoJevCodexConnection implements ProviderConnection {
       this.emit({
         type: "request.failed",
         requestId: input.requestId,
-        error: { message: "Auto Jev-Codex for Paseo session is already open." },
+        error: { message: "Auto Mode for Paseo session is already open." },
       });
       return;
     }
     const saved = asRecord(input.persistence?.data);
-    const selectedModel = input.config.model ?? stringValue(saved?.selectedModel) ?? MODEL_ID;
+    const requestedModel = input.config.model ?? stringValue(saved?.selectedModel) ?? MODEL_ID;
+    const selectedModel = requestedModel === "auto-jev-codex-for-paseo" ? MODEL_ID : requestedModel;
     const mode = input.config.mode ?? stringValue(saved?.mode) ?? "auto";
     const models = await modelCatalog();
     let controls: Controls;
@@ -300,7 +301,7 @@ class AutoJevCodexConnection implements ProviderConnection {
   ): Promise<void> {
     const session = this.sessions.get(sessionId);
     if (!session || session.closed) {
-      this.emitPromptFailure(sessionId, prompt.clientMessageId, "Auto Jev-Codex for Paseo session is not open.");
+      this.emitPromptFailure(sessionId, prompt.clientMessageId, "Auto Mode for Paseo session is not open.");
       return;
     }
     if (session.starting || (session.activeTurnId && prompt.delivery !== "steer")) {
@@ -308,7 +309,7 @@ class AutoJevCodexConnection implements ProviderConnection {
       return;
     }
     if (prompt.input.type !== "message") {
-      this.emitPromptFailure(sessionId, prompt.clientMessageId, "Composer commands are not supported by Auto Jev-Codex for Paseo.");
+      this.emitPromptFailure(sessionId, prompt.clientMessageId, "Composer commands are not supported by Auto Mode for Paseo.");
       return;
     }
     let message: PreparedComposerMessage;
@@ -358,7 +359,7 @@ class AutoJevCodexConnection implements ProviderConnection {
       }
 
       if (session.threadId && !session.contextLoaded) await this.restoreHistory(session, false);
-      const route = await routePromptWithJev(message.routeText, session.routingContext);
+      const route = await routePrompt(message.routeText, session.routingContext);
       if (session.closed) return;
       const manual = session.selectedModel !== MODEL_ID;
       const model = manual ? session.selectedModel : route.model;
@@ -371,9 +372,9 @@ class AutoJevCodexConnection implements ProviderConnection {
         sessionId,
         item: {
           type: "notification",
-          id: `jev-route:${prompt.clientMessageId}`,
+          id: `auto-route:${prompt.clientMessageId}`,
           level: "info",
-          message: `${manual ? "Manual model" : "Jev selected"} ${model}: ${route.intent}, ${route.lane}, ${route.effort}. Intent confidence: ${Math.round(route.confidence * 100)}%. Classification: ${route.classificationMs}ms. Context: ${session.routingContext.length} messages. Fast: ${fast ? "on" : "off"}. Plan: ${plan ? "on" : "off"}. Permissions: ${plan ? "plan (read-only)" : session.controls.permissions}.`,
+          message: `${manual ? "Manual model" : `${route.classifier === "laya" ? "Laya" : "Jev"} selected`} ${model}: ${route.intent}, ${route.lane}, ${route.effort}. Intent confidence: ${Math.round(route.confidence * 100)}%. Classification: ${route.classificationMs}ms. Context: ${session.routingContext.length} messages. Fast: ${fast ? "on" : "off"}. Plan: ${plan ? "on" : "off"}. Permissions: ${plan ? "plan (read-only)" : session.controls.permissions}.`,
         },
       });
       const codex = await this.ensureCodex(session, model);
@@ -424,7 +425,7 @@ class AutoJevCodexConnection implements ProviderConnection {
       this.emitPromptFailure(
         sessionId,
         prompt.clientMessageId,
-        error instanceof Error ? error.message : "Could not start the Auto Jev-Codex for Paseo turn.",
+        error instanceof Error ? error.message : "Could not start the Auto Mode for Paseo turn.",
       );
     } finally {
       session.starting = false;
@@ -728,7 +729,7 @@ class AutoJevCodexConnection implements ProviderConnection {
   ): Promise<unknown> {
     if (request.method === "item/tool/requestUserInput") return this.requestQuestions(session, request);
     if (!isApprovalRequest(request.method)) {
-      throw new Error(`Auto Jev-Codex for Paseo does not yet support '${request.method}'.`);
+      throw new Error(`Auto Mode for Paseo does not yet support '${request.method}'.`);
     }
     const permissionId = `codex:${String(request.id)}`;
     const params = asRecord(request.params) ?? {};
@@ -763,7 +764,7 @@ class AutoJevCodexConnection implements ProviderConnection {
     const session = this.sessions.get(sessionId);
     const pending = session?.permissions.get(permissionId);
     if (!session || !pending) {
-      throw new Error(`Unknown Auto Jev-Codex for Paseo permission '${permissionId}'.`);
+      throw new Error(`Unknown Auto Mode for Paseo permission '${permissionId}'.`);
     }
     if (pending.question) {
       let answers: string[] = [];
@@ -815,7 +816,7 @@ class AutoJevCodexConnection implements ProviderConnection {
     session.closed = true;
     this.sessions.delete(sessionId);
     for (const pending of session.permissions.values()) {
-      pending.reject(new Error("Auto Jev-Codex for Paseo session closed."));
+      pending.reject(new Error("Auto Mode for Paseo session closed."));
     }
     session.permissions.clear();
     await session.codex?.close();
@@ -849,16 +850,16 @@ async function modelCatalog() {
 }
 
 function manualModelDescription(id: string): string {
-  const effort = "Jev still classifies the request and selects effort.";
+  const effort = "The selected classifier still classifies the request and selects effort.";
   switch (id) {
     case "gpt-6-astra":
-      return `Architecture, high-stakes review, and deep cross-cutting work. ${effort}`;
+      return `Architecture with difficult tradeoffs, high-risk review, and deep system analysis. ${effort}`;
     case "gpt-5.6-sol":
-      return `Complex implementation and difficult debugging. ${effort}`;
+      return `Complex implementation, investigation, explanation, and review. ${effort}`;
     case "gpt-5.6-terra":
-      return `Balanced choice for standard implementation and bounded debugging. ${effort}`;
+      return `Balanced choice for bounded explanations, plans, reviews, implementation, and debugging. ${effort}`;
     case "gpt-5.6-luna":
-      return `Fast, low-cost choice for small mechanical tasks. ${effort}`;
+      return `Direct factual questions and small mechanical tasks. ${effort}`;
     default:
       return `Configured manual model. ${effort}`;
   }
@@ -867,8 +868,8 @@ function manualModelDescription(id: string): string {
 function autoModel() {
   return {
     id: MODEL_ID,
-    label: "Auto Jev-Codex for Paseo",
-    description: "Jev chooses the Codex model before every new turn.",
+    label: "Auto Mode for Paseo",
+    description: "The classifier chooses the Codex model before every new turn.",
     isDefault: true,
   };
 }
@@ -893,7 +894,7 @@ function prepareComposerMessage(content: ComposerMessageContent): PreparedCompos
     throw new Error("Add a message or an image before sending.");
   }
   if (images.length > MAX_IMAGES_PER_MESSAGE) {
-    throw new Error(`Auto Jev-Codex for Paseo supports up to ${MAX_IMAGES_PER_MESSAGE} images per message.`);
+    throw new Error(`Auto Mode for Paseo supports up to ${MAX_IMAGES_PER_MESSAGE} images per message.`);
   }
 
   const codexInput: CodexTurnInput[] = text
@@ -906,7 +907,7 @@ function prepareComposerMessage(content: ComposerMessageContent): PreparedCompos
   const imageDescription = images.length === 1 ? "1 image attached." : `${images.length} images attached.`;
   return {
     displayText: text || `[${imageDescription}]`,
-    // TypeSafe classifies the message text. Image bytes stay local to Codex.
+    // The classifier processes the message text. Image bytes stay local to Codex.
     routeText: text || "Analyze the attached image.",
     contextText: text ? `${text}\n[${imageDescription}]` : imageDescription,
     codexInput,

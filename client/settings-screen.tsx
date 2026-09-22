@@ -5,6 +5,7 @@ import {
   SettingsCard,
   SettingsInput,
   SettingsSection,
+  SettingsSelect,
 } from "@getpaseo/plugin/client/ui";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
@@ -20,7 +21,7 @@ export function SettingsScreen({ theme }: PluginSurfaceProps) {
   const getSettings = useRpc(getSettingsRpc);
   const saveSettings = useRpc(saveSettingsRpc);
   const loaded = useQuery({
-    queryKey: ["auto-jev-codex-for-paseo", "settings"],
+    queryKey: ["auto-mode-for-paseo", "settings"],
     queryFn: () => getSettings({}),
   });
   const [draft, setDraft] = useState<PublicSettings & { apiKey: string }>({
@@ -59,9 +60,17 @@ export function SettingsScreen({ theme }: PluginSurfaceProps) {
 
   return (
     <>
+      <SettingsSection title="Classifier" info="Choose how each new message is classified. A failure stops the turn. The plugin never switches classifiers automatically.">
+        <SettingsCard>
+          <SettingsSelect label="Classifier" value={draft.classifier}
+            options={[{ label: "Jev (TypeSafe API)", value: "jev" }, { label: "Laya (local, experimental)", value: "laya" }]}
+            onValueChange={(classifier) => setDraft((current) => ({ ...current, classifier }))} disabled={!ready} />
+        </SettingsCard>
+      </SettingsSection>
+      {draft.classifier === "jev" ? (
       <SettingsSection
         title="TypeSafe"
-        info="Each new message and up to six recent user messages, answers, or plans (1,000 characters each) are sent to TypeSafe. Select Auto or a manual model in the composer. The key is stored in ~/.paseo/auto-jev-codex-for-paseo.local.json."
+        info="Each new message and up to six recent user messages, answers, or plans (1,000 characters each) are sent to TypeSafe. Select Auto or a manual model in the composer. The key is stored in ~/.paseo/auto-mode-for-paseo.local.json."
       >
         <SettingsCard>
           <SettingsInput
@@ -84,14 +93,32 @@ export function SettingsScreen({ theme }: PluginSurfaceProps) {
           />
         </SettingsCard>
       </SettingsSection>
+      ) : (
+      <SettingsSection title="Laya" info="Classify locally with Python and Laya 0.3.5. No TypeSafe key is needed. Models download on first use. Oversized context stops the turn. Quality for this routing task is experimental.">
+        <SettingsCard>
+          <SettingsInput key={`layaPython-${formKey}`} label="Python executable"
+            hint="Use the Python executable in the environment where Laya is installed. Do not include command arguments."
+            initialValue={draft.layaPython} onChangeText={(layaPython) => setDraft((current) => ({ ...current, layaPython }))} disabled={!ready} />
+          <SettingsInput key={`layaCache-${formKey}`} label="Model cache"
+            hint="Keep the model cache in the plugin directory. The Windows installer configures this field."
+            initialValue={draft.layaCache} onChangeText={(layaCache) => setDraft((current) => ({ ...current, layaCache }))} disabled={!ready} />
+          <SettingsSelect label="Laya model" value={draft.layaModel}
+            options={[{ label: "Multilingual (includes Portuguese)", value: "multilingual" }, { label: "English", value: "english" }, { label: "Typed decisions (specialized)", value: "typed-decisions" }]}
+            onValueChange={(layaModel) => setDraft((current) => ({ ...current, layaModel }))} disabled={!ready} />
+          <SettingsSelect label="Device" value={draft.layaDevice}
+            options={[{ label: "CPU", value: "cpu" }, { label: "CUDA", value: "cuda" }, { label: "Automatic", value: "auto" }]}
+            onValueChange={(layaDevice) => setDraft((current) => ({ ...current, layaDevice }))} disabled={!ready} />
+        </SettingsCard>
+      </SettingsSection>
+      )}
       <SettingsSection
-        title="Auto Jev-Codex for Paseo"
-        info="Choose the model fallback for each task category. Jev chooses effort on every new turn; an effort value here is used only when its answer is unavailable."
+        title="Auto Mode for Paseo"
+        info="Choose the model fallback for each task category. The classifier chooses effort on every new turn; an effort value here is used only when its answer is unavailable."
       >
         <SettingsCard>
           <SettingsInput
             key={`autoCodexModelStaff-${formKey}`}
-            label="Architecture"
+            label="Difficult architecture"
             initialValue={draft.autoCodexModelStaff}
             onChangeText={(autoCodexModelStaff) =>
               setDraft((current) => ({ ...current, autoCodexModelStaff }))
@@ -101,7 +128,7 @@ export function SettingsScreen({ theme }: PluginSurfaceProps) {
           />
           <SettingsInput
             key={`autoCodexModelReview-${formKey}`}
-            label="Review"
+            label="High-risk review"
             initialValue={draft.autoCodexModelReview}
             onChangeText={(autoCodexModelReview) =>
               setDraft((current) => ({ ...current, autoCodexModelReview }))
@@ -111,7 +138,7 @@ export function SettingsScreen({ theme }: PluginSurfaceProps) {
           />
           <SettingsInput
             key={`autoCodexModelCheap-${formKey}`}
-            label="Mechanical tasks"
+            label="Direct questions and mechanical tasks"
             initialValue={draft.autoCodexModelCheap}
             onChangeText={(autoCodexModelCheap) =>
               setDraft((current) => ({ ...current, autoCodexModelCheap }))
@@ -121,7 +148,7 @@ export function SettingsScreen({ theme }: PluginSurfaceProps) {
           />
           <SettingsInput
             key={`autoCodexModelStandard-${formKey}`}
-            label="Standard implementation"
+            label="Bounded tasks"
             initialValue={draft.autoCodexModelStandard}
             onChangeText={(autoCodexModelStandard) =>
               setDraft((current) => ({ ...current, autoCodexModelStandard }))
@@ -131,7 +158,7 @@ export function SettingsScreen({ theme }: PluginSurfaceProps) {
           />
           <SettingsInput
             key={`autoCodexModelLead-${formKey}`}
-            label="Complex implementation"
+            label="Complex tasks"
             initialValue={draft.autoCodexModelLead}
             onChangeText={(autoCodexModelLead) =>
               setDraft((current) => ({ ...current, autoCodexModelLead }))
@@ -141,7 +168,7 @@ export function SettingsScreen({ theme }: PluginSurfaceProps) {
           />
           <SettingsInput
             key={`autoCodexEffortStaff-${formKey}`}
-            label="Architecture fallback effort"
+            label="Difficult architecture fallback effort"
             initialValue={draft.autoCodexEffortStaff}
             onChangeText={(autoCodexEffortStaff) =>
               setDraft((current) => ({ ...current, autoCodexEffortStaff }))
@@ -151,7 +178,7 @@ export function SettingsScreen({ theme }: PluginSurfaceProps) {
           />
           <SettingsInput
             key={`autoCodexEffortReview-${formKey}`}
-            label="Review fallback effort"
+            label="High-risk review fallback effort"
             initialValue={draft.autoCodexEffortReview}
             onChangeText={(autoCodexEffortReview) =>
               setDraft((current) => ({ ...current, autoCodexEffortReview }))
@@ -161,7 +188,7 @@ export function SettingsScreen({ theme }: PluginSurfaceProps) {
           />
           <SettingsInput
             key={`autoCodexEffortCheap-${formKey}`}
-            label="Mechanical tasks fallback effort"
+            label="Direct tasks fallback effort"
             initialValue={draft.autoCodexEffortCheap}
             onChangeText={(autoCodexEffortCheap) =>
               setDraft((current) => ({ ...current, autoCodexEffortCheap }))
@@ -171,7 +198,7 @@ export function SettingsScreen({ theme }: PluginSurfaceProps) {
           />
           <SettingsInput
             key={`autoCodexEffortStandard-${formKey}`}
-            label="Standard implementation fallback effort"
+            label="Bounded tasks fallback effort"
             initialValue={draft.autoCodexEffortStandard}
             onChangeText={(autoCodexEffortStandard) =>
               setDraft((current) => ({ ...current, autoCodexEffortStandard }))
@@ -181,7 +208,7 @@ export function SettingsScreen({ theme }: PluginSurfaceProps) {
           />
           <SettingsInput
             key={`autoCodexEffortLead-${formKey}`}
-            label="Complex implementation fallback effort"
+            label="Complex tasks fallback effort"
             initialValue={draft.autoCodexEffortLead}
             onChangeText={(autoCodexEffortLead) =>
               setDraft((current) => ({ ...current, autoCodexEffortLead }))
@@ -191,11 +218,11 @@ export function SettingsScreen({ theme }: PluginSurfaceProps) {
           />
         </SettingsCard>
       </SettingsSection>
-      <SettingsSection title="Thresholds" info="Thresholds refine the lane after Jev has identified an explicit discussion, review, or implementation intent.">
+      <SettingsSection title="Thresholds" info="Thresholds refine the lane after the classifier has identified an explicit discussion, review, or implementation intent.">
         <SettingsCard>
           <SettingsInput
             key={`thresholdStaff-${formKey}`}
-            label="Architecture"
+            label="Difficult architecture"
             initialValue={String(draft.thresholdStaff)}
             onChangeText={(text) =>
               setDraft((current) => ({ ...current, thresholdStaff: Number(text) || 0 }))
@@ -217,7 +244,7 @@ export function SettingsScreen({ theme }: PluginSurfaceProps) {
         <SettingsCard>
           <SettingsAction
             label={save.isSuccess ? "Saved" : "Write settings on this daemon"}
-            actionLabel={save.isPending ? "Saving…" : "Save"}
+            actionLabel={save.isPending ? "SavingÃ¢â‚¬Â¦" : "Save"}
             disabled={!ready || save.isPending}
             onPress={() => {
               void save.mutateAsync();

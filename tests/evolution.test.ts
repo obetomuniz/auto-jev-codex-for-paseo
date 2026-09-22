@@ -3,9 +3,11 @@ import fs from "node:fs/promises";
 import { test, type TestContext } from "node:test";
 import type { ProviderEvent, ProviderConfigChanges, ProviderPrompt } from "@getpaseo/plugin/server/provider";
 import { CodexAppServer, type CodexNotification, type CodexServerRequest } from "../server/codex-app-server";
-import { createAutoJevCodexProvider } from "../server/provider";
+import { createAutoModeProvider } from "../server/provider";
 import { appendContext, readContext, type ContextEntry } from "../server/route-context";
-import { evaluateRoute, pickIntent, type RouteAnswers } from "../server/jev";
+import { evaluateRoute } from "../server/jev";
+import { pickIntent, type RouteAnswers } from "../server/classifier";
+import { LayaClassifier, disposeLaya } from "../server/laya";
 import { defaults } from "../shared/settings";
 import { answers } from "./fixtures";
 
@@ -44,7 +46,7 @@ async function harness(t: TestContext) {
     if (method === "turn/steer") return { turnId: "turn-" + turn };
     return {};
   });
-  const connection = await createAutoJevCodexProvider().connect({
+  const connection = await createAutoModeProvider().connect({
     versions: [1], capabilities: ["prompt.message", "prompt.steer", "permission", "session.persistence", "session.configure"],
   });
   t.after(() => connection.close());
@@ -239,3 +241,86 @@ test("Plan questions forward the actual selection and allow skipping without inv
   await h.connection.send({ type: "session.permission", sessionId: "s", permissionId: "codex:9:extra", response: { behavior: "deny" } });
   assert.deepEqual(await result, { answers: { format: { answers: ["JSON"] }, extra: { answers: [] } } });
 });
+
+
+test("Laya shares permission boundaries and never restores Full access", async (t) => {
+  const h = await harness(t);
+  t.mock.method(fs, "readFile", async () => JSON.stringify({ ...defaults, classifier: "laya" }));
+  let result: RouteAnswers = answers();
+  t.mock.method(LayaClassifier.prototype, "evaluate", async () => result);
+  t.after(disposeLaya);
+  for (const intent of ["discuss", "review", "implement"] as const) {
+    result = answers({ intent: choice(intent) });
+    await h.send("A request");
+    assert.equal(h.latest().sandboxPolicy.type, intent === "implement" ? "workspaceWrite" : "readOnly");
+    assert.equal(h.latest().approvalsReviewer, "auto_review");
+    h.complete();
+  }
+  await h.configure({ settings: { permissions: "full-access" }, mode: "plan" });
+  await h.send("Plan this");
+  assert.equal(h.latest().sandboxPolicy.type, "readOnly");
+  assert.equal(h.states.length, 0);
+});
+
+
+test("new provider migrates an old Auto model ID and keeps safe thread persistence", async (t) => {
+  const h = await harness(t);
+  assert.equal(createAutoModeProvider().id, "auto-mode-for-paseo");
+  await h.connection.send({ type: "session.close", sessionId: "s", requestId: "close" });
+  await h.connection.send({ type: "session.open", sessionId: "s", requestId: "reopen", history: "skip", config: h.config, persistence: {
+    version: 1, data: { threadId: "thread", selectedModel: "auto-jev-codex-for-paseo", controls: { permissions: "full-access", modelScope: "pinned" } },
+  } });
+  const config = h.events.filter((event) => event.type === "session.config").at(-1)!;
+  assert.equal(config.config.model, "auto-mode-for-paseo");
+  await h.send("Implement this");
+  assert.equal(h.latest().threadId, "thread");
+  assert.equal(h.latest().sandboxPolicy.type, "workspaceWrite");
+  assert.equal(h.latest().approvalPolicy, "on-request");
+});
+
+test("a Laya failure never starts a Codex turn or calls TypeSafe", async (t) => {
+  const h = await harness(t);
+  t.mock.method(fs, "readFile", async () => JSON.stringify({ ...defaults, classifier: "laya", apiKey: "test-key" }));
+  t.mock.method(LayaClassifier.prototype, "evaluate", async () => { throw new Error("Laya unavailable"); });
+  t.after(disposeLaya);
+  await h.send("Implement this");
+  assert.equal(h.calls.some((call) => call.method === "turn/start"), false);
+  assert.equal(h.states.length, 0);
+  assert.ok(JSON.stringify(h.events).includes("Laya unavailable"));
+});
+
+for (const classifier of ["jev", "laya"] as const) {
+  test(`${classifier} selects models by complexity while intent alone limits Auto-review access`, async (t) => {
+    const h = await harness(t);
+    t.mock.method(fs, "readFile", async () => JSON.stringify({ ...defaults, classifier, apiKey: "test-key" }));
+    let result = answers();
+    if (classifier === "laya") {
+      t.mock.method(LayaClassifier.prototype, "evaluate", async () => result);
+      t.after(disposeLaya);
+    }
+    const cases = [
+      ["discuss", "cheap", "low", "Which output format is configured?", "gpt-5.6-luna"],
+      ["discuss", "standard", "medium", "Explain how this validation works", "gpt-5.6-terra"],
+      ["discuss", "lead", "high", "Investigate this race across components", "gpt-5.6-sol"],
+      ["discuss", "staff", "xhigh", "Design cross-region consistency under conflicting constraints", "gpt-6-astra"],
+      ["review", "standard", "medium", "Review this validation rule", "gpt-5.6-terra"],
+      ["review", "lead", "high", "Review error recovery across these components", "gpt-5.6-sol"],
+      ["review", "review", "xhigh", "Audit tenant isolation across services", "gpt-6-astra"],
+      ["implement", "cheap", "low", "Fix the spelling mistake", "gpt-5.6-luna"],
+      ["implement", "standard", "medium", "Add the validation rule", "gpt-5.6-terra"],
+      ["implement", "lead", "high", "Implement recovery across components", "gpt-5.6-sol"],
+    ] as const;
+    for (const [intent, lane, effort, prompt, model] of cases) {
+      result = answers({ intent: choice(intent), lane: choice(lane), effort: choice(effort) });
+      h.setResult(result);
+      await h.send(prompt);
+      assert.equal(h.latest().model, model, prompt);
+      assert.equal(h.latest().effort, effort);
+      assert.equal(h.latest().sandboxPolicy.type, intent === "implement" ? "workspaceWrite" : "readOnly", prompt);
+      assert.equal(h.latest().approvalPolicy, "on-request");
+      assert.equal(h.latest().approvalsReviewer, "auto_review");
+      h.complete();
+    }
+    if (classifier === "laya") assert.equal(h.states.length, 0);
+  });
+}

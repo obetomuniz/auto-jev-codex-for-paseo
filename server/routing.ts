@@ -1,5 +1,6 @@
+import { evaluateRoute } from "./jev";
+import { evaluateLayaRoute } from "./laya";
 import {
-  evaluateRoute,
   pickEffort,
   pickExecution,
   pickIntent,
@@ -7,12 +8,13 @@ import {
   type Execution,
   type Intent,
   type Lane,
-} from "./jev";
+} from "./classifier";
 import { defaults, type ProviderSettings } from "../shared/settings";
 import type { ContextEntry } from "./route-context";
 import { loadSettings } from "./settings-store";
 
-export type AutoJevRoute = {
+export type AutoRoute = {
+  classifier: "jev" | "laya";
   intent: Intent;
   lane: Lane;
   model: string;
@@ -24,27 +26,16 @@ export type AutoJevRoute = {
   classificationMs: number;
 };
 
-export async function routePromptWithJev(prompt: string, context: ContextEntry[] = []): Promise<AutoJevRoute> {
+export async function routePrompt(prompt: string, context: ContextEntry[] = []): Promise<AutoRoute> {
   const settings = await loadSettings();
-  const apiKey = settings.apiKey.trim() || process.env.TYPESAFE_API_KEY?.trim() || "";
-  if (!apiKey) {
-    throw new Error(
-      "Configure the TypeSafe key in Settings > Plugins > Auto Jev-Codex for Paseo, or set TYPESAFE_API_KEY on the daemon.",
-    );
-  }
-
   const started = performance.now();
-  const answers = await evaluateRoute({
-    apiKey,
-    model: settings.model.trim() || "jev-latest",
-    prompt,
-    context,
-  });
+  const answers = await classifyPrompt(prompt, context, settings);
   const lane = pickLane(answers, {
     staff: settings.thresholdStaff,
     cheap: settings.thresholdCheap,
   });
   return {
+    classifier: settings.classifier,
     intent: pickIntent(answers),
     lane,
     model: selectCodexModel(lane, settings),
@@ -77,4 +68,14 @@ export function selectCodexEffort(lane: Lane, settings: ProviderSettings): strin
     lead: "autoCodexEffortLead",
   } as const;
   return settings[key[lane]].trim() || defaults[key[lane]];
+}
+
+export async function classifyPrompt(prompt: string, context: ContextEntry[], settings: ProviderSettings) {
+  if (settings.classifier === "laya") {
+    return evaluateLayaRoute({ prompt, context, python: settings.layaPython, cache: settings.layaCache, model: settings.layaModel, device: settings.layaDevice });
+  }
+  if (settings.classifier !== "jev") throw new Error("Unknown classifier; no Codex turn was started.");
+  const apiKey = settings.apiKey.trim() || process.env.TYPESAFE_API_KEY?.trim() || "";
+  if (!apiKey) throw new Error("Configure the TypeSafe key for Jev in Settings > Plugins > Auto Mode for Paseo, or set TYPESAFE_API_KEY on the daemon.");
+  return evaluateRoute({ apiKey, model: settings.model.trim() || "jev-latest", prompt, context });
 }

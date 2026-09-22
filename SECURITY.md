@@ -16,9 +16,16 @@ the `main` branch. This policy will change when the project has stable releases.
 
 ## Security boundaries
 
-The plugin sends message text and limited recent context to TypeSafe. It stores
+With Jev selected, the plugin sends message text and limited recent context to
+TypeSafe. With Laya selected, it processes that data locally. It stores
 the TypeSafe key as plain text in the local Paseo settings directory. Codex
 authentication stays in the local Codex CLI.
 
-Auto-review is the default permission mode. Jev cannot select Full access. Plan
+Auto-review is the default permission mode. Neither classifier can select Full access. Plan
 always uses a read-only sandbox.
+
+Laya is experimental for this routing task. Correctly formatted answers can still
+misclassify user intent. Confidence does not replace evaluation on real requests.
+Laya errors and oversized context stop the turn. They do not trigger a remote
+classifier fallback. Model downloads use Hugging Face. Prompts are passed only
+to the local worker. The worker does not receive daemon API keys.

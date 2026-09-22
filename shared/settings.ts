@@ -2,6 +2,11 @@ import { defineRpc } from "@getpaseo/plugin";
 import { z } from "zod";
 
 export const settingsSchema = z.object({
+  classifier: z.enum(["jev", "laya"]).default("jev"),
+  layaPython: z.string().trim().min(1).default("python"),
+  layaCache: z.string().trim().default(""),
+  layaModel: z.enum(["multilingual", "english", "typed-decisions"]).default("multilingual"),
+  layaDevice: z.enum(["cpu", "cuda", "auto"]).default("cpu"),
   apiKey: z.string().default(""),
   model: z.string().default("jev-latest"),
   thresholdStaff: z.number().min(0).max(1).default(0.7),

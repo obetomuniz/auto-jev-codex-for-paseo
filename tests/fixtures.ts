@@ -1,4 +1,4 @@
-import type { RouteAnswers } from "../server/jev";
+import type { RouteAnswers } from "../server/classifier";
 
 export function answers(overrides: Partial<RouteAnswers> = {}): RouteAnswers {
   return {

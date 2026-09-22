@@ -1,21 +1,22 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { evaluateRoute, pickEffort, pickExecution, pickIntent, pickLane } from "../server/jev";
+import { evaluateRoute } from "../server/jev";
+import { pickEffort, pickExecution, pickIntent, pickLane } from "../server/classifier";
 import { selectCodexEffort, selectCodexModel } from "../server/routing";
 import { defaults } from "../shared/settings";
 import { answers } from "./fixtures";
 
-test("explicit intent prevents accidental review or implementation routing", () => {
+test("lane selection respects complexity overrides and validates intent", () => {
   const thresholds = { staff: 0.7, cheap: 0.8 };
   assert.equal(pickLane(answers({ architecture_decision: { type: "noul", noul: 0.7 } }), thresholds), "staff");
   assert.equal(pickLane(answers({
     intent: { type: "choice", choice: "review", probabilities: { review: 1 }, confidence: 1 },
-  }), thresholds), "review");
+  }), thresholds), "lead");
   assert.equal(pickLane(answers({
     intent: { type: "choice", choice: "discuss", probabilities: { discuss: 1 }, confidence: 1 },
     lane: { type: "choice", choice: "review", probabilities: { review: 1 }, confidence: 1 },
     independent_review: { type: "noul", noul: 1 },
-  }), thresholds), "staff");
+  }), thresholds), "lead");
   assert.equal(pickLane(answers({
     lane: { type: "choice", choice: "review", probabilities: { review: 1 }, confidence: 1 },
     independent_review: { type: "noul", noul: 1 },
@@ -35,6 +36,37 @@ test("explicit intent prevents accidental review or implementation routing", () 
   assert.equal(pickLane(answers({
     lane: { type: "choice", choice: "unknown", probabilities: {}, confidence: 0 },
   }), thresholds), "standard");
+});
+
+test("questions and reviews use task complexity instead of forcing Astra", () => {
+  const choice = (value: string) => ({ type: "choice" as const, choice: value, probabilities: { [value]: 1 }, confidence: 1 });
+  const thresholds = { staff: 0.7, cheap: 0.8 };
+  const cases = [
+    ["discuss", "cheap", "cheap", "gpt-5.6-luna"],
+    ["discuss", "standard", "standard", "gpt-5.6-terra"],
+    ["discuss", "lead", "lead", "gpt-5.6-sol"],
+    ["discuss", "staff", "staff", "gpt-6-astra"],
+    ["review", "standard", "standard", "gpt-5.6-terra"],
+    ["review", "lead", "lead", "gpt-5.6-sol"],
+    ["review", "review", "review", "gpt-6-astra"],
+    ["review", "staff", "review", "gpt-6-astra"],
+    ["review", "cheap", "standard", "gpt-5.6-terra"],
+    ["review", "unknown", "standard", "gpt-5.6-terra"],
+    ["discuss", "unknown", "standard", "gpt-5.6-terra"],
+  ] as const;
+  for (const [intent, category, expected, model] of cases) {
+    const lane = pickLane(answers({ intent: choice(intent), lane: choice(category) }), thresholds);
+    assert.equal(lane, expected, `${intent}/${category}`);
+    assert.equal(selectCodexModel(lane, defaults), model);
+  }
+  assert.equal(pickLane(answers({ intent: choice("discuss"), lane: choice("standard"),
+    architecture_decision: { type: "noul", noul: 0.7 },
+  }), thresholds), "staff");
+  // Implementation signals cannot downgrade a review or force its architecture lane.
+  assert.equal(pickLane(answers({ intent: choice("review"), lane: choice("standard"),
+    architecture_decision: { type: "noul", noul: 1 }, mechanical_local: { type: "noul", noul: 1 },
+  }), thresholds), "standard");
+  assert.throws(() => pickLane(answers({ intent: choice("unknown"), lane: choice("cheap") }), thresholds), /unknown intent/);
 });
 
 test("Jev's intent, effort, and execution answers are validated before use", () => {
@@ -74,4 +106,10 @@ test("classification works without workspace or isolation questions and answers"
 test("classification failures are propagated instead of selecting an arbitrary model", async (t) => {
   t.mock.method(globalThis, "fetch", async () => Response.json({ message: "Unauthorized" }, { status: 401 }));
   await assert.rejects(evaluateRoute({ apiKey: "test-key", model: "jev-latest", prompt: "Test" }), /API key rejected/);
+});
+
+
+test("classifier rejects array-shaped probability maps", async (t) => {
+  t.mock.method(globalThis, "fetch", async () => Response.json({ answers: { ...answers(), intent: { choice: "implement", confidence: 1, probabilities: [1] } } }));
+  await assert.rejects(evaluateRoute({ apiKey: "test-key", model: "jev-latest", prompt: "Fix it" }), /not a choice/);
 });
