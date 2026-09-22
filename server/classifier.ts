@@ -57,36 +57,36 @@ export const ROUTE_QUESTIONS = {
     type: "choice" as const,
     instructions: {
       question: "Which working lane should handle this request?",
-      focus: "Classify the user's latest request, not the repository topic. Intent is evaluated separately and can override an incompatible lane.",
+      focus: "Choose by difficulty and risk of the latest request, not its intent or repository topic. Discussion and review do not require the strongest lane. Intent controls permissions separately.",
     },
     criteria: {
       staff: {
-        what: "Architecture, tradeoffs, sequencing, or whether to build at all",
-        not_for: "Implementing a decided change, or reviewing an existing diff",
+        what: "Difficult architecture decisions, high-risk tradeoffs, or deep analysis across components",
+        not_for: "Direct questions, routine planning, bounded explanations, or reviews",
         examples: [
-          "Should this cache live in the client or the service?",
+          "Design a consistency strategy across regions with conflicting availability requirements",
           "JWT across 12 services - what is the plan?",
         ],
       },
       review: {
-        what: "Independent review of existing work: diff, PR, tests, or live behavior",
-        not_for: "Writing the change or deciding architecture; only use when the user explicitly asks for review",
-        examples: ["Review this PR", "Is the test coverage enough?"],
+        what: "Explicit review with high risk or deep analysis across components",
+        not_for: "Small or routine reviews; use standard for bounded reviews and lead for complex reviews without exceptional risk",
+        examples: ["Audit tenant isolation across all services for security failures"],
       },
       cheap: {
-        what: "Small, local, mechanical edit in one place",
-        not_for: "Cross-cutting work, architecture, or independent review",
-        examples: ["Rename foo to bar", "Fix the typo in the README"],
+        what: "Direct factual question or small, local, mechanical edit with an obvious result",
+        not_for: "Investigation, non-trivial tradeoffs, or review",
+        examples: ["Which classifier is configured?", "Fix the typo in the README"],
       },
       standard: {
-        what: "Normal implementation or debugging with a bounded scope",
-        not_for: "A one-file mechanical edit, architecture-only question, review-only request, or difficult cross-cutting work",
-        examples: ["Add a form validation rule with tests", "Fix this bounded API error"],
+        what: "Bounded explanation, routine planning, small review, implementation, or debugging",
+        not_for: "Obvious factual answers, mechanical edits, difficult cross-cutting work, or high-risk analysis",
+        examples: ["Explain this function", "Review this validation rule", "Add a form validation rule with tests"],
       },
       lead: {
-        what: "Complex implementation, difficult debugging, or cross-cutting work that needs stronger coding judgment",
-        not_for: "A small mechanical edit, routine bounded implementation, architecture-only question, or review-only request",
-        examples: ["Refactor the authentication flow across services", "Trace and fix this intermittent production failure"],
+        what: "Complex implementation, investigation, explanation, or review that needs stronger reasoning",
+        not_for: "Routine bounded work or architecture and reviews with exceptional risk or depth",
+        examples: ["Review error handling across these components", "Trace and fix this intermittent production failure"],
       },
     },
   },
@@ -117,12 +117,12 @@ export const ROUTE_QUESTIONS = {
   architecture_decision: {
     type: "noul" as const,
     instructions: {
-      question: "Is this primarily an architecture or direction decision, not implementation?",
-      focus: "Yes if the user needs a recommendation before coding.",
+      question: "Does this require difficult architecture decisions or deep analysis across components?",
+      focus: "A question, recommendation, or plan alone is insufficient. Require substantial tradeoffs or high risk.",
     },
     criteria: {
-      true: "The user is asking what to do, where it belongs, or whether to proceed",
-      false: "The user explicitly wants a change implemented or a review of existing work",
+      true: "Difficult system design, high-risk tradeoffs, or deep cross-component analysis",
+      false: "Direct question, routine plan, bounded explanation, decided implementation, or review",
     },
   },
   independent_review: {
@@ -202,13 +202,10 @@ export function pickLane(
 ): Lane {
   const intent = pickIntent(answers);
 
-  // An explicit review remains read-only and is the only path to the review lane.
-  if (intent === "review") return "review";
-  // A discussion should never be escalated into a write-capable implementation.
-  if (intent === "discuss") return "staff";
-
-  if (answers.architecture_decision.noul >= thresholds.staff) return "staff";
+  // Intent controls access in the provider. A lane selects only model and effort.
+  if (intent !== "review" && answers.architecture_decision.noul >= thresholds.staff) return "staff";
   if (
+    intent === "implement" &&
     answers.mechanical_local.noul >= thresholds.cheap &&
     answers.parallel_edits.noul < 0.5
   ) {
@@ -217,7 +214,9 @@ export function pickLane(
 
   const choice = knownChoice(answers.lane, LANES);
   if (choice) {
-    if (choice === "review") return "lead";
+    if (choice === "review" && intent !== "review") return "lead";
+    if (intent === "review" && choice === "staff") return "review";
+    if (intent === "review" && choice === "cheap") return "standard";
     if (choice === "cheap" && answers.parallel_edits.noul >= 0.7) return "lead";
     return choice;
   }

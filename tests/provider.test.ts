@@ -34,6 +34,7 @@ test("provider routes new turns in one thread and preserves steer, permissions, 
         }
       : {
           intent: { type: "choice", choice: "review", probabilities: { review: 1 }, confidence: 1 },
+          lane: { type: "choice", choice: "review", probabilities: { review: 1 }, confidence: 1 },
           independent_review: { type: "noul", noul: 1 },
         }) });
   });

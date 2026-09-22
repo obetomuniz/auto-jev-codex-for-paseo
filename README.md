@@ -108,11 +108,20 @@ Set the model for each task category. Empty fields use these defaults:
 
 | Task category | Model | Fallback effort |
 | --- | --- | --- |
-| Architecture | `gpt-6-astra` | `xhigh` |
-| Review | `gpt-6-astra` | `xhigh` |
-| Mechanical task | `gpt-5.6-luna` | `low` |
-| Standard implementation | `gpt-5.6-terra` | `medium` |
-| Complex implementation | `gpt-5.6-sol` | `high` |
+| Difficult architecture or deep system analysis | `gpt-6-astra` | `xhigh` |
+| High-risk or deep cross-component review | `gpt-6-astra` | `xhigh` |
+| Direct question or mechanical task | `gpt-5.6-luna` | `low` |
+| Bounded explanation, plan, review, or implementation | `gpt-5.6-terra` | `medium` |
+| Complex investigation, review, or implementation | `gpt-5.6-sol` | `high` |
+
+The task category selects the model. Intent controls workspace access separately.
+Discussion and review do not automatically select Astra. A direct question can use
+Luna. A bounded explanation or small review can use Terra. A complex review can
+use Sol. Difficult architecture and high-risk reviews use the configured Astra categories.
+For Auto-review, discussion and review stay read-only with every model.
+Reasoning effort is selected separately. Saved model choices remain in effect.
+The classifier can still underestimate or overestimate a task. Check the routing
+notice in the chat. Select a model manually when the category is unsuitable.
 
 Select **Auto Mode for Paseo** in a Paseo chat. Then send a text message.
 You can also select Astra, Sol, Terra, or Luna manually. The classifier still chooses

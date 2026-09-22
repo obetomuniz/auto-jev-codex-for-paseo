@@ -51,23 +51,35 @@ resolve references such as "continue" or "implement the plan."
 Intent controls workspace access when the permission control is Auto-review.
 The allowed intent values are `discuss`, `review`, and `implement`.
 
-- `discuss` selects the architecture lane and a read-only sandbox.
-- `review` selects the review lane and a read-only sandbox.
-- `implement` can select an implementation lane and workspace-write access.
+- `discuss` uses a read-only sandbox.
+- `review` uses a read-only sandbox.
+- `implement` uses workspace-write access.
 
 An unknown intent stops the turn. It never enables write access.
-
-For an implementation request, the architecture score has first priority at
-its configured threshold. A local mechanical task uses the mechanical lane when
-its score reaches the threshold and its parallel-work score is less than 0.5.
-Otherwise, the explicit lane result applies. A mechanical result with a
-parallel-work score of 0.7 or more becomes a complex implementation result. An
-unknown or incompatible lane becomes a standard implementation result.
+The lane selects the model and fallback effort. It does not grant workspace access.
+Both classifiers choose the lane by task difficulty and risk.
+Discussion and review do not force an Astra category.
 
 The internal lane IDs are `staff`, `review`, `cheap`, `standard`, and `lead`.
-The standard lane uses Terra for bounded implementation. The lead lane uses Sol
-for difficult or cross-cutting implementation. These IDs do not start skills or
-worker agents. The execution result is advice only.
+The cheap lane uses Luna for direct factual questions and mechanical edits.
+The standard lane uses Terra for bounded explanations, plans, reviews, and implementation.
+The lead lane uses Sol for complex investigations, reviews, and implementation.
+The staff lane uses Astra for difficult architecture or deep system analysis.
+The review lane uses Astra for high-risk or deep cross-component reviews.
+Saved model overrides still apply to these lanes.
+
+The difficult-architecture score has first priority at its configured threshold.
+This override does not apply to review intent.
+For implementation, the mechanical score can select the cheap lane at its threshold.
+This override requires a parallel-work score below 0.5.
+Otherwise, the classifier's lane result applies.
+Outside review intent, a cheap result with a parallel-work score of 0.7 or more becomes lead.
+A review with a cheap result becomes standard.
+A review with a staff result uses the configured review model.
+A review lane without review intent becomes lead.
+An unknown lane becomes standard.
+
+These IDs do not start skills or worker agents. The execution result is advice only.
 
 ## Composer controls
 

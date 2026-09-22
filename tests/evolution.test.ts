@@ -288,3 +288,39 @@ test("a Laya failure never starts a Codex turn or calls TypeSafe", async (t) => 
   assert.equal(h.states.length, 0);
   assert.ok(JSON.stringify(h.events).includes("Laya unavailable"));
 });
+
+for (const classifier of ["jev", "laya"] as const) {
+  test(`${classifier} selects models by complexity while intent alone limits Auto-review access`, async (t) => {
+    const h = await harness(t);
+    t.mock.method(fs, "readFile", async () => JSON.stringify({ ...defaults, classifier, apiKey: "test-key" }));
+    let result = answers();
+    if (classifier === "laya") {
+      t.mock.method(LayaClassifier.prototype, "evaluate", async () => result);
+      t.after(disposeLaya);
+    }
+    const cases = [
+      ["discuss", "cheap", "low", "Which output format is configured?", "gpt-5.6-luna"],
+      ["discuss", "standard", "medium", "Explain how this validation works", "gpt-5.6-terra"],
+      ["discuss", "lead", "high", "Investigate this race across components", "gpt-5.6-sol"],
+      ["discuss", "staff", "xhigh", "Design cross-region consistency under conflicting constraints", "gpt-6-astra"],
+      ["review", "standard", "medium", "Review this validation rule", "gpt-5.6-terra"],
+      ["review", "lead", "high", "Review error recovery across these components", "gpt-5.6-sol"],
+      ["review", "review", "xhigh", "Audit tenant isolation across services", "gpt-6-astra"],
+      ["implement", "cheap", "low", "Fix the spelling mistake", "gpt-5.6-luna"],
+      ["implement", "standard", "medium", "Add the validation rule", "gpt-5.6-terra"],
+      ["implement", "lead", "high", "Implement recovery across components", "gpt-5.6-sol"],
+    ] as const;
+    for (const [intent, lane, effort, prompt, model] of cases) {
+      result = answers({ intent: choice(intent), lane: choice(lane), effort: choice(effort) });
+      h.setResult(result);
+      await h.send(prompt);
+      assert.equal(h.latest().model, model, prompt);
+      assert.equal(h.latest().effort, effort);
+      assert.equal(h.latest().sandboxPolicy.type, intent === "implement" ? "workspaceWrite" : "readOnly", prompt);
+      assert.equal(h.latest().approvalPolicy, "on-request");
+      assert.equal(h.latest().approvalsReviewer, "auto_review");
+      h.complete();
+    }
+    if (classifier === "laya") assert.equal(h.states.length, 0);
+  });
+}

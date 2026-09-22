@@ -853,13 +853,13 @@ function manualModelDescription(id: string): string {
   const effort = "The selected classifier still classifies the request and selects effort.";
   switch (id) {
     case "gpt-6-astra":
-      return `Architecture, high-stakes review, and deep cross-cutting work. ${effort}`;
+      return `Architecture with difficult tradeoffs, high-risk review, and deep system analysis. ${effort}`;
     case "gpt-5.6-sol":
-      return `Complex implementation and difficult debugging. ${effort}`;
+      return `Complex implementation, investigation, explanation, and review. ${effort}`;
     case "gpt-5.6-terra":
-      return `Balanced choice for standard implementation and bounded debugging. ${effort}`;
+      return `Balanced choice for bounded explanations, plans, reviews, implementation, and debugging. ${effort}`;
     case "gpt-5.6-luna":
-      return `Fast, low-cost choice for small mechanical tasks. ${effort}`;
+      return `Direct factual questions and small mechanical tasks. ${effort}`;
     default:
       return `Configured manual model. ${effort}`;
   }

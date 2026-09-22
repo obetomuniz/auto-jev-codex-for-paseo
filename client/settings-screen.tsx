@@ -118,7 +118,7 @@ export function SettingsScreen({ theme }: PluginSurfaceProps) {
         <SettingsCard>
           <SettingsInput
             key={`autoCodexModelStaff-${formKey}`}
-            label="Architecture"
+            label="Difficult architecture"
             initialValue={draft.autoCodexModelStaff}
             onChangeText={(autoCodexModelStaff) =>
               setDraft((current) => ({ ...current, autoCodexModelStaff }))
@@ -128,7 +128,7 @@ export function SettingsScreen({ theme }: PluginSurfaceProps) {
           />
           <SettingsInput
             key={`autoCodexModelReview-${formKey}`}
-            label="Review"
+            label="High-risk review"
             initialValue={draft.autoCodexModelReview}
             onChangeText={(autoCodexModelReview) =>
               setDraft((current) => ({ ...current, autoCodexModelReview }))
@@ -138,7 +138,7 @@ export function SettingsScreen({ theme }: PluginSurfaceProps) {
           />
           <SettingsInput
             key={`autoCodexModelCheap-${formKey}`}
-            label="Mechanical tasks"
+            label="Direct questions and mechanical tasks"
             initialValue={draft.autoCodexModelCheap}
             onChangeText={(autoCodexModelCheap) =>
               setDraft((current) => ({ ...current, autoCodexModelCheap }))
@@ -148,7 +148,7 @@ export function SettingsScreen({ theme }: PluginSurfaceProps) {
           />
           <SettingsInput
             key={`autoCodexModelStandard-${formKey}`}
-            label="Standard implementation"
+            label="Bounded tasks"
             initialValue={draft.autoCodexModelStandard}
             onChangeText={(autoCodexModelStandard) =>
               setDraft((current) => ({ ...current, autoCodexModelStandard }))
@@ -158,7 +158,7 @@ export function SettingsScreen({ theme }: PluginSurfaceProps) {
           />
           <SettingsInput
             key={`autoCodexModelLead-${formKey}`}
-            label="Complex implementation"
+            label="Complex tasks"
             initialValue={draft.autoCodexModelLead}
             onChangeText={(autoCodexModelLead) =>
               setDraft((current) => ({ ...current, autoCodexModelLead }))
@@ -168,7 +168,7 @@ export function SettingsScreen({ theme }: PluginSurfaceProps) {
           />
           <SettingsInput
             key={`autoCodexEffortStaff-${formKey}`}
-            label="Architecture fallback effort"
+            label="Difficult architecture fallback effort"
             initialValue={draft.autoCodexEffortStaff}
             onChangeText={(autoCodexEffortStaff) =>
               setDraft((current) => ({ ...current, autoCodexEffortStaff }))
@@ -178,7 +178,7 @@ export function SettingsScreen({ theme }: PluginSurfaceProps) {
           />
           <SettingsInput
             key={`autoCodexEffortReview-${formKey}`}
-            label="Review fallback effort"
+            label="High-risk review fallback effort"
             initialValue={draft.autoCodexEffortReview}
             onChangeText={(autoCodexEffortReview) =>
               setDraft((current) => ({ ...current, autoCodexEffortReview }))
@@ -188,7 +188,7 @@ export function SettingsScreen({ theme }: PluginSurfaceProps) {
           />
           <SettingsInput
             key={`autoCodexEffortCheap-${formKey}`}
-            label="Mechanical tasks fallback effort"
+            label="Direct tasks fallback effort"
             initialValue={draft.autoCodexEffortCheap}
             onChangeText={(autoCodexEffortCheap) =>
               setDraft((current) => ({ ...current, autoCodexEffortCheap }))
@@ -198,7 +198,7 @@ export function SettingsScreen({ theme }: PluginSurfaceProps) {
           />
           <SettingsInput
             key={`autoCodexEffortStandard-${formKey}`}
-            label="Standard implementation fallback effort"
+            label="Bounded tasks fallback effort"
             initialValue={draft.autoCodexEffortStandard}
             onChangeText={(autoCodexEffortStandard) =>
               setDraft((current) => ({ ...current, autoCodexEffortStandard }))
@@ -208,7 +208,7 @@ export function SettingsScreen({ theme }: PluginSurfaceProps) {
           />
           <SettingsInput
             key={`autoCodexEffortLead-${formKey}`}
-            label="Complex implementation fallback effort"
+            label="Complex tasks fallback effort"
             initialValue={draft.autoCodexEffortLead}
             onChangeText={(autoCodexEffortLead) =>
               setDraft((current) => ({ ...current, autoCodexEffortLead }))
@@ -222,7 +222,7 @@ export function SettingsScreen({ theme }: PluginSurfaceProps) {
         <SettingsCard>
           <SettingsInput
             key={`thresholdStaff-${formKey}`}
-            label="Architecture"
+            label="Difficult architecture"
             initialValue={String(draft.thresholdStaff)}
             onChangeText={(text) =>
               setDraft((current) => ({ ...current, thresholdStaff: Number(text) || 0 }))
@@ -244,7 +244,7 @@ export function SettingsScreen({ theme }: PluginSurfaceProps) {
         <SettingsCard>
           <SettingsAction
             label={save.isSuccess ? "Saved" : "Write settings on this daemon"}
-            actionLabel={save.isPending ? "Savingâ€¦" : "Save"}
+            actionLabel={save.isPending ? "SavingÃ¢â‚¬Â¦" : "Save"}
             disabled={!ready || save.isPending}
             onPress={() => {
               void save.mutateAsync();
