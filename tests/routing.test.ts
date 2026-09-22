@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { evaluateRoute, pickEffort, pickExecution, pickIntent, pickLane } from "../server/jev";
+import { evaluateRoute } from "../server/jev";
+import { pickEffort, pickExecution, pickIntent, pickLane } from "../server/classifier";
 import { selectCodexEffort, selectCodexModel } from "../server/routing";
 import { defaults } from "../shared/settings";
 import { answers } from "./fixtures";
@@ -74,4 +75,10 @@ test("classification works without workspace or isolation questions and answers"
 test("classification failures are propagated instead of selecting an arbitrary model", async (t) => {
   t.mock.method(globalThis, "fetch", async () => Response.json({ message: "Unauthorized" }, { status: 401 }));
   await assert.rejects(evaluateRoute({ apiKey: "test-key", model: "jev-latest", prompt: "Test" }), /API key rejected/);
+});
+
+
+test("classifier rejects array-shaped probability maps", async (t) => {
+  t.mock.method(globalThis, "fetch", async () => Response.json({ answers: { ...answers(), intent: { choice: "implement", confidence: 1, probabilities: [1] } } }));
+  await assert.rejects(evaluateRoute({ apiKey: "test-key", model: "jev-latest", prompt: "Fix it" }), /not a choice/);
 });

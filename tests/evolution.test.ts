@@ -3,9 +3,11 @@ import fs from "node:fs/promises";
 import { test, type TestContext } from "node:test";
 import type { ProviderEvent, ProviderConfigChanges, ProviderPrompt } from "@getpaseo/plugin/server/provider";
 import { CodexAppServer, type CodexNotification, type CodexServerRequest } from "../server/codex-app-server";
-import { createAutoJevCodexProvider } from "../server/provider";
+import { createAutoModeProvider } from "../server/provider";
 import { appendContext, readContext, type ContextEntry } from "../server/route-context";
-import { evaluateRoute, pickIntent, type RouteAnswers } from "../server/jev";
+import { evaluateRoute } from "../server/jev";
+import { pickIntent, type RouteAnswers } from "../server/classifier";
+import { LayaClassifier, disposeLaya } from "../server/laya";
 import { defaults } from "../shared/settings";
 import { answers } from "./fixtures";
 
@@ -44,7 +46,7 @@ async function harness(t: TestContext) {
     if (method === "turn/steer") return { turnId: "turn-" + turn };
     return {};
   });
-  const connection = await createAutoJevCodexProvider().connect({
+  const connection = await createAutoModeProvider().connect({
     versions: [1], capabilities: ["prompt.message", "prompt.steer", "permission", "session.persistence", "session.configure"],
   });
   t.after(() => connection.close());
@@ -238,4 +240,51 @@ test("Plan questions forward the actual selection and allow skipping without inv
   await h.connection.send({ type: "session.permission", sessionId: "s", permissionId: "codex:9:format", response: { behavior: "allow", selectedActionId: "answer:1" } });
   await h.connection.send({ type: "session.permission", sessionId: "s", permissionId: "codex:9:extra", response: { behavior: "deny" } });
   assert.deepEqual(await result, { answers: { format: { answers: ["JSON"] }, extra: { answers: [] } } });
+});
+
+
+test("Laya shares permission boundaries and never restores Full access", async (t) => {
+  const h = await harness(t);
+  t.mock.method(fs, "readFile", async () => JSON.stringify({ ...defaults, classifier: "laya" }));
+  let result: RouteAnswers = answers();
+  t.mock.method(LayaClassifier.prototype, "evaluate", async () => result);
+  t.after(disposeLaya);
+  for (const intent of ["discuss", "review", "implement"] as const) {
+    result = answers({ intent: choice(intent) });
+    await h.send("A request");
+    assert.equal(h.latest().sandboxPolicy.type, intent === "implement" ? "workspaceWrite" : "readOnly");
+    assert.equal(h.latest().approvalsReviewer, "auto_review");
+    h.complete();
+  }
+  await h.configure({ settings: { permissions: "full-access" }, mode: "plan" });
+  await h.send("Plan this");
+  assert.equal(h.latest().sandboxPolicy.type, "readOnly");
+  assert.equal(h.states.length, 0);
+});
+
+
+test("new provider migrates an old Auto model ID and keeps safe thread persistence", async (t) => {
+  const h = await harness(t);
+  assert.equal(createAutoModeProvider().id, "auto-mode-for-paseo");
+  await h.connection.send({ type: "session.close", sessionId: "s", requestId: "close" });
+  await h.connection.send({ type: "session.open", sessionId: "s", requestId: "reopen", history: "skip", config: h.config, persistence: {
+    version: 1, data: { threadId: "thread", selectedModel: "auto-jev-codex-for-paseo", controls: { permissions: "full-access", modelScope: "pinned" } },
+  } });
+  const config = h.events.filter((event) => event.type === "session.config").at(-1)!;
+  assert.equal(config.config.model, "auto-mode-for-paseo");
+  await h.send("Implement this");
+  assert.equal(h.latest().threadId, "thread");
+  assert.equal(h.latest().sandboxPolicy.type, "workspaceWrite");
+  assert.equal(h.latest().approvalPolicy, "on-request");
+});
+
+test("a Laya failure never starts a Codex turn or calls TypeSafe", async (t) => {
+  const h = await harness(t);
+  t.mock.method(fs, "readFile", async () => JSON.stringify({ ...defaults, classifier: "laya", apiKey: "test-key" }));
+  t.mock.method(LayaClassifier.prototype, "evaluate", async () => { throw new Error("Laya unavailable"); });
+  t.after(disposeLaya);
+  await h.send("Implement this");
+  assert.equal(h.calls.some((call) => call.method === "turn/start"), false);
+  assert.equal(h.states.length, 0);
+  assert.ok(JSON.stringify(h.events).includes("Laya unavailable"));
 });

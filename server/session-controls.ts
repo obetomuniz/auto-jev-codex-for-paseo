@@ -21,8 +21,8 @@ export function parseControls(input: Readonly<Record<string, JsonValue>>, curren
 
 export function controlSettings(controls: Controls): ProviderSetting[] {
   return [
-    { type: "select", id: "fast", label: "Fast mode", description: "Auto starts off; Jev may enable it for urgency. Faster processing may use more quota.", value: controls.fast, options: [
-      { label: "Auto (Jev decides)", value: "auto" }, { label: "On", value: "on" }, { label: "Off", value: "off" },
+    { type: "select", id: "fast", label: "Fast mode", description: "Auto starts off; The classifier may enable it for urgency. Faster processing may use more quota.", value: controls.fast, options: [
+      { label: "Auto (classifier decides)", value: "auto" }, { label: "On", value: "on" }, { label: "Off", value: "off" },
     ] },
     { type: "select", id: "permissions", label: "Permissions", value: controls.permissions, options: [
       { label: "Auto-review (default)", value: "auto-review" },
@@ -37,7 +37,7 @@ export function controlSettings(controls: Controls): ProviderSetting[] {
 
 export function collaborationModes() {
   return [
-    { id: "auto", label: "Auto", description: "Plan starts off; Jev may enable it when planning is needed." },
+    { id: "auto", label: "Auto", description: "Plan starts off; The classifier may enable it when planning is needed." },
     { id: "default", label: "Work", description: "Discuss, review, or implement according to your request." },
     { id: "plan", label: "Plan", description: "Explore and plan without modifying the workspace." },
   ];

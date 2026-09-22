@@ -5,6 +5,7 @@ import {
   SettingsCard,
   SettingsInput,
   SettingsSection,
+  SettingsSelect,
 } from "@getpaseo/plugin/client/ui";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
@@ -20,7 +21,7 @@ export function SettingsScreen({ theme }: PluginSurfaceProps) {
   const getSettings = useRpc(getSettingsRpc);
   const saveSettings = useRpc(saveSettingsRpc);
   const loaded = useQuery({
-    queryKey: ["auto-jev-codex-for-paseo", "settings"],
+    queryKey: ["auto-mode-for-paseo", "settings"],
     queryFn: () => getSettings({}),
   });
   const [draft, setDraft] = useState<PublicSettings & { apiKey: string }>({
@@ -59,9 +60,17 @@ export function SettingsScreen({ theme }: PluginSurfaceProps) {
 
   return (
     <>
+      <SettingsSection title="Classifier" info="Choose how each new message is classified. A failure stops the turn. The plugin never switches classifiers automatically.">
+        <SettingsCard>
+          <SettingsSelect label="Classifier" value={draft.classifier}
+            options={[{ label: "Jev (TypeSafe API)", value: "jev" }, { label: "Laya (local, experimental)", value: "laya" }]}
+            onValueChange={(classifier) => setDraft((current) => ({ ...current, classifier }))} disabled={!ready} />
+        </SettingsCard>
+      </SettingsSection>
+      {draft.classifier === "jev" ? (
       <SettingsSection
         title="TypeSafe"
-        info="Each new message and up to six recent user messages, answers, or plans (1,000 characters each) are sent to TypeSafe. Select Auto or a manual model in the composer. The key is stored in ~/.paseo/auto-jev-codex-for-paseo.local.json."
+        info="Each new message and up to six recent user messages, answers, or plans (1,000 characters each) are sent to TypeSafe. Select Auto or a manual model in the composer. The key is stored in ~/.paseo/auto-mode-for-paseo.local.json."
       >
         <SettingsCard>
           <SettingsInput
@@ -84,9 +93,24 @@ export function SettingsScreen({ theme }: PluginSurfaceProps) {
           />
         </SettingsCard>
       </SettingsSection>
+      ) : (
+      <SettingsSection title="Laya" info="Classify locally with Python and Laya 0.3.5. No TypeSafe key is needed. Models download on first use. Oversized context stops the turn. Quality for this routing task is experimental.">
+        <SettingsCard>
+          <SettingsInput key={`layaPython-${formKey}`} label="Python executable"
+            hint="Use the Python executable in the environment where Laya is installed. Do not include command arguments."
+            initialValue={draft.layaPython} onChangeText={(layaPython) => setDraft((current) => ({ ...current, layaPython }))} disabled={!ready} />
+          <SettingsSelect label="Laya model" value={draft.layaModel}
+            options={[{ label: "Multilingual (includes Portuguese)", value: "multilingual" }, { label: "English", value: "english" }, { label: "Typed decisions (specialized)", value: "typed-decisions" }]}
+            onValueChange={(layaModel) => setDraft((current) => ({ ...current, layaModel }))} disabled={!ready} />
+          <SettingsSelect label="Device" value={draft.layaDevice}
+            options={[{ label: "CPU", value: "cpu" }, { label: "CUDA", value: "cuda" }, { label: "Automatic", value: "auto" }]}
+            onValueChange={(layaDevice) => setDraft((current) => ({ ...current, layaDevice }))} disabled={!ready} />
+        </SettingsCard>
+      </SettingsSection>
+      )}
       <SettingsSection
-        title="Auto Jev-Codex for Paseo"
-        info="Choose the model fallback for each task category. Jev chooses effort on every new turn; an effort value here is used only when its answer is unavailable."
+        title="Auto Mode for Paseo"
+        info="Choose the model fallback for each task category. The classifier chooses effort on every new turn; an effort value here is used only when its answer is unavailable."
       >
         <SettingsCard>
           <SettingsInput
@@ -191,7 +215,7 @@ export function SettingsScreen({ theme }: PluginSurfaceProps) {
           />
         </SettingsCard>
       </SettingsSection>
-      <SettingsSection title="Thresholds" info="Thresholds refine the lane after Jev has identified an explicit discussion, review, or implementation intent.">
+      <SettingsSection title="Thresholds" info="Thresholds refine the lane after the classifier has identified an explicit discussion, review, or implementation intent.">
         <SettingsCard>
           <SettingsInput
             key={`thresholdStaff-${formKey}`}

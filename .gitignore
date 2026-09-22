@@ -7,3 +7,7 @@ node_modules
 *.local.json
 *.log
 .DS_Store
+
+.test-python/
+.venv-laya/
+__pycache__/

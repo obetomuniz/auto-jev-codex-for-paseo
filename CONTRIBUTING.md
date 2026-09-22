@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for your interest in Auto Jev-Codex for Paseo.
+Thank you for your interest in Auto Mode for Paseo.
 
 ## Before you start
 
@@ -19,7 +19,7 @@ npm ci
 npm run check
 ```
 
-The tests do not use real TypeSafe or Codex services.
+The tests do not use real TypeSafe, Laya, or Codex services.
 
 ## Make a change
 
@@ -58,3 +58,7 @@ Call out changes to data handling, permissions, or compatibility.
 
 By contributing, you agree that your contribution is licensed under the MIT
 License in [LICENSE](LICENSE).
+
+Python bridge tests need Python 3.10 or later. Set `LAYA_TEST_PYTHON` to select
+the executable. They use a fake Laya module and do not download model weights.
+Run real-model evaluation separately before changing the experimental status.

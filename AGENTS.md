@@ -12,11 +12,11 @@ or a second session store.
 
 - Treat intent as the workspace-access boundary for Auto-review.
 - Stop the turn when the intent is missing or invalid.
-- Do not let Jev select Full access.
+- Do not let a classifier select Full access.
 - Keep Plan read-only.
 - Do not save Full access in provider persistence.
 - Do not send tool output, private reasoning, credentials, or full chat history
-  to TypeSafe.
+  to a classifier.
 - Keep all context limits explicit and covered by tests.
 
 ## Code rules
@@ -35,7 +35,25 @@ Use short sentences and active voice. Give one instruction in each sentence.
 Define an uncommon term before you use it. Keep procedures in their execution
 order. Follow the main principles of Simplified Technical English.
 
-## Before completion
+## Local CLI access on Windows
+
+Use `npm.cmd run paseo -- <arguments>` for the installed Paseo CLI.
+The launcher checks `PASEO_CLI`, then PATH, then the desktop installation under
+`LOCALAPPDATA`. Use `npm.cmd run plugin:install` to install this checkout.
+Use `npm.cmd run plugin:status` to verify its source directory and status.
+Use `npm.cmd run plugin:reload` after changing an installed checkout.
+Reloading a plugin from another checkout does not load this checkout's changes.
+
+The Windows sandbox can block access to the installed CLI or its credentials.
+If this occurs, retry through the host's escalation mechanism. A supported
+sandbox read grant can fix directory access. Authentication may need a separate
+host-approved solution. Do not disable the sandbox to fix CLI discovery.
+Do not interpret an in-sandbox command-not-found or HTTP 401 result as proof
+that the CLI is missing or that the user must log in again.
+Do not copy credentials into this repository. These instructions do not change
+the host's permissions or approval requirements.
+
+## Completion checks
 
 Run:
 

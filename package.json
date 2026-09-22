@@ -1,16 +1,16 @@
 {
-  "name": "auto-jev-codex-for-paseo",
+  "name": "auto-mode-for-paseo",
   "private": true,
   "version": "0.2.0",
-  "description": "A Paseo provider that uses TypeSafe Jev to route each Codex turn.",
+  "description": "Select a Codex model, effort, mode, and speed with Jev or local Laya in Paseo.",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/obetomuniz/auto-jev-codex-for-paseo.git"
+    "url": "git+https://github.com/obetomuniz/auto-mode-for-paseo.git"
   },
-  "homepage": "https://github.com/obetomuniz/auto-jev-codex-for-paseo#readme",
+  "homepage": "https://github.com/obetomuniz/auto-mode-for-paseo#readme",
   "bugs": {
-    "url": "https://github.com/obetomuniz/auto-jev-codex-for-paseo/issues"
+    "url": "https://github.com/obetomuniz/auto-mode-for-paseo/issues"
   },
   "engines": {
     "node": ">=24"
@@ -22,9 +22,14 @@
     "typesafe",
     "model-router",
     "system1",
-    "system-one"
+    "system-one",
+    "laya"
   ],
   "scripts": {
+    "paseo": "scripts\\paseo.cmd",
+    "plugin:install": "npm run paseo -- plugin install \"%CD%\"",
+    "plugin:reload": "npm run paseo -- plugin reload auto-mode-for-paseo",
+    "plugin:status": "npm run paseo -- plugin ls --json",
     "check": "npm run typecheck && npm test",
     "typecheck": "tsc --noEmit",
     "pretest": "node -e \"require('node:fs').rmSync('.test-build',{recursive:true,force:true})\"",
