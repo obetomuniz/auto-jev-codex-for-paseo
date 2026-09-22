@@ -9,5 +9,7 @@ node_modules
 .DS_Store
 
 .test-python/
+.laya-python/
+.laya-cache/
 .venv-laya/
 __pycache__/

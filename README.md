@@ -14,7 +14,7 @@ the workspace and the chat session.
 - Codex CLI 0.153.4 or a compatible later version.
 - A local Codex CLI login.
 - For Jev: a TypeSafe API key.
-- For Laya: Python 3.10 or later with Laya 0.3.5 in a separate environment.
+- For Laya: no separate Python installation is needed on Windows.
 
 ## Install
 
@@ -55,26 +55,31 @@ The key and Jev model fields appear only when Jev is selected.
 
 ### Laya (experimental)
 
-Create a Python environment in the project directory:
-
-```sh
-python -m venv .venv-laya
-```
-
-Install the supported Laya version on Windows:
+On Windows, run the local installer from the plugin directory:
 
 ```powershell
-.venv-laya\Scripts\python.exe -m pip install laya==0.3.5
+npm.cmd run laya:install -- -Device cuda
 ```
 
-On macOS or Linux, use:
+The installer downloads Python 3.12 into `.laya-python`, creates `.venv-laya` and `.laya-cache`,
+installs `laya==0.3.5`, installs the CUDA build of PyTorch when selected, preloads the chosen model, and saves the
+Laya settings for the Paseo daemon. Both directories stay inside the plugin and
+are ignored by Git. Use `-Device auto` to let PyTorch choose the device. Use
+`-Device cpu` when no compatible NVIDIA GPU is available.
+
+The first install downloads the Python runtime, PyTorch, Laya dependencies, and
+the selected Hugging Face model. It can take several minutes. The plugin starts
+the cached model on later turns.
+
+On macOS or Linux, create a Python environment in the project directory:
 
 ```sh
+python3.12 -m venv .venv-laya
 .venv-laya/bin/python -m pip install laya==0.3.5
 ```
 
-Select **Laya (local, experimental)** in plugin settings.
-Set **Python executable** to the absolute path of that environment's Python executable.
+Select **Laya (local, experimental)** in plugin settings when the installer is
+not used. Set **Python executable** and **Model cache** to the absolute paths for that environment.
 Do not include shell commands or arguments.
 Select **Multilingual** for Portuguese. Select **English** for English-only work.
 Use **Typed decisions** only when evaluating that specialized checkpoint.
@@ -85,14 +90,8 @@ Save the settings. Send a short message to load the model.
 The first load downloads model files from Hugging Face.
 The model stays loaded between classifications until the plugin unloads,
 the Laya configuration changes, or classification fails.
-Startup has a 120-second limit. Inference has a 30-second limit.
-Preload the default model if its first download exceeds the startup limit:
-
-```powershell
-.venv-laya\Scripts\python.exe -c "import laya; laya.load('convaiinnovations/laya', subfolder='multilingual', device='cpu')"
-```
-
-On macOS or Linux, replace the executable with `.venv-laya/bin/python`.
+Startup has a 120-second limit. Inference has a 30-second limit. Preload the
+model before the first Paseo turn when manual installation takes longer than the startup limit.
 
 Laya does not require a TypeSafe key. A saved key stays stored when switching
 classifiers. The plugin does not pass it to Laya. A Laya failure stops the turn.

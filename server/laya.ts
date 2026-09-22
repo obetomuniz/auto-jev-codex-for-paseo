@@ -15,6 +15,7 @@ type LayaInput = {
   python: string;
   model: "english" | "multilingual" | "typed-decisions";
   device: "cpu" | "cuda" | "auto";
+  cache?: string;
   prompt: string;
   context?: ContextEntry[];
 };
@@ -22,14 +23,14 @@ type Pending = { resolve(value: unknown): void; reject(error: Error): void; time
 
 // Pass only runtime essentials. In particular, TypeSafe and Codex credentials
 // are not part of the worker environment or its JSON protocol.
-function workerEnv(): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1", HF_HUB_DISABLE_TELEMETRY: "1", HF_HUB_DISABLE_IMPLICIT_TOKEN: "1" };
-  for (const key of ["PATH", "Path", "SystemRoot", "WINDIR", "HOME", "USERPROFILE", "TEMP", "TMP", "TMPDIR", "LOCALAPPDATA", "APPDATA", "HF_HOME", "HF_HUB_CACHE", "CUDA_VISIBLE_DEVICES"]) {
+function workerEnv(cache: string): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1", HF_HUB_DISABLE_TELEMETRY: "1", HF_HUB_DISABLE_IMPLICIT_TOKEN: "1", HF_HUB_DISABLE_SYMLINKS: "1" };
+  for (const key of ["PATH", "Path", "SystemRoot", "WINDIR", "HOME", "USERPROFILE", "TEMP", "TMP", "TMPDIR", "LOCALAPPDATA", "APPDATA", "CUDA_VISIBLE_DEVICES"]) {
     if (process.env[key] !== undefined) env[key] = process.env[key];
   }
+  if (cache) env.HF_HOME = cache;
   return env;
 }
-
 class Worker {
   private child: ChildProcessWithoutNullStreams | undefined;
   private pending: Pending | undefined;
@@ -40,7 +41,7 @@ class Worker {
     const ready = this.wait(LAYA_STARTUP_MS, "Laya startup timed out after 120s. Preload the model and try again.");
     try {
       this.child = spawn(input.python, ["-I", "-u", "-c", LAYA_WORKER, JSON.stringify({ model: input.model, device: input.device })], {
-        shell: false, windowsHide: true, stdio: ["pipe", "pipe", "pipe"], cwd: homedir(), env: workerEnv(),
+        shell: false, windowsHide: true, stdio: ["pipe", "pipe", "pipe"], cwd: homedir(), env: workerEnv(input.cache ?? ""),
       });
       this.child.stdout.on("data", (chunk: Buffer) => this.receive(chunk));
       this.child.stderr.resume(); // Never surface library output that may contain private input.
@@ -124,8 +125,8 @@ export class LayaClassifier {
 
   evaluate(input: LayaInput): Promise<RouteAnswers> {
     // Validate again at the process boundary, including callers outside settings RPC.
-    const settings = settingsSchema.parse({ layaPython: input.python, layaModel: input.model, layaDevice: input.device });
-    input = { ...input, python: settings.layaPython, model: settings.layaModel, device: settings.layaDevice };
+    const settings = settingsSchema.parse({ layaPython: input.python, layaCache: input.cache, layaModel: input.model, layaDevice: input.device });
+    input = { ...input, python: settings.layaPython, cache: settings.layaCache, model: settings.layaModel, device: settings.layaDevice };
     if (typeof input.prompt !== "string" || input.prompt.length > LAYA_MAX_PROMPT_CHARS) return Promise.reject(new Error("Laya request exceeds 16,000 characters."));
     const payload = JSON.stringify({ state: { request: input.prompt, recentConversation: readContext(input.context).map(({ role, text }) => ({ role, text })) }, questions: LAYA_QUESTIONS });
     if (Buffer.byteLength(payload + "\n") > LAYA_MAX_BYTES) return Promise.reject(new Error("Laya request exceeds 64 KiB."));
@@ -134,7 +135,7 @@ export class LayaClassifier {
     this.pendingCount++;
     const task = this.tail.then(async () => {
       if (this.closed) throw new Error("Laya classifier is closed.");
-      const config = JSON.stringify([input.python, input.model, input.device]);
+      const config = JSON.stringify([input.python, input.cache, input.model, input.device]);
       try {
         if (!this.worker || this.config !== config) {
           this.worker?.close();

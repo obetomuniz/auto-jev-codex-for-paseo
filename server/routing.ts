@@ -72,7 +72,7 @@ export function selectCodexEffort(lane: Lane, settings: ProviderSettings): strin
 
 export async function classifyPrompt(prompt: string, context: ContextEntry[], settings: ProviderSettings) {
   if (settings.classifier === "laya") {
-    return evaluateLayaRoute({ prompt, context, python: settings.layaPython, model: settings.layaModel, device: settings.layaDevice });
+    return evaluateLayaRoute({ prompt, context, python: settings.layaPython, cache: settings.layaCache, model: settings.layaModel, device: settings.layaDevice });
   }
   if (settings.classifier !== "jev") throw new Error("Unknown classifier; no Codex turn was started.");
   const apiKey = settings.apiKey.trim() || process.env.TYPESAFE_API_KEY?.trim() || "";

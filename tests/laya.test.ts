@@ -9,7 +9,7 @@ import { classifyPrompt, routePrompt } from "../server/routing";
 import { defaults } from "../shared/settings";
 import { answers } from "./fixtures";
 
-const input = { python: "python", model: "multilingual" as const, device: "cpu" as const, prompt: "Corrija o erro" };
+const input = { python: "python", cache: "C:/local-laya-cache", model: "multilingual" as const, device: "cpu" as const, prompt: "Corrija o erro" };
 function fakeWorker(t: TestContext, options: { response?: unknown; raw?: string; startup?: string; hang?: boolean } = {}) {
   const requests: Record<string, any>[] = [];
   const children: Array<EventEmitter & { stdout: PassThrough; stderr: PassThrough; stdin: Writable; kill(): boolean }> = [];
@@ -44,6 +44,8 @@ test("Laya reuses its process, bounds context and excludes credentials", async (
   assert.equal(worker.calls[0].options.windowsHide, true);
   assert.equal(worker.calls[0].options.env.TYPESAFE_API_KEY, undefined);
   assert.equal(worker.calls[0].options.env.OPENAI_API_KEY, undefined);
+  assert.equal(worker.calls[0].options.env.HF_HOME, input.cache);
+  assert.equal(worker.calls[0].options.env.HF_HUB_DISABLE_SYMLINKS, "1");
   assert.deepEqual((worker.calls[0].args as string[]).slice(0, 2), ["-I", "-u"]);
   const history = worker.requests[0].state.recentConversation;
   assert.equal(history.length, 6);

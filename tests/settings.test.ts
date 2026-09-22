@@ -72,6 +72,7 @@ test("saving migrated settings preserves the key and model choices across reload
 test("legacy settings default to Jev and invalid classifiers stop loading", async (t) => {
   assert.equal(parseStoredSettings({}).classifier, "jev");
   assert.equal(parseStoredSettings({ classifier: "laya" }).apiKey, "");
+  assert.equal(parseStoredSettings({ layaCache: "C:/local-laya-cache" }).layaCache, "C:/local-laya-cache");
   for (const invalid of [{ classifier: "other" }, { layaModel: "other" }, { layaDevice: "other" }, { layaPython: " " }]) {
     assert.throws(() => parseStoredSettings(invalid));
   }

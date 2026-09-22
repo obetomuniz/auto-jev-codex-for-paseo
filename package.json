@@ -30,6 +30,7 @@
     "plugin:install": "npm run paseo -- plugin install \"%CD%\"",
     "plugin:reload": "npm run paseo -- plugin reload auto-mode-for-paseo",
     "plugin:status": "npm run paseo -- plugin ls --json",
+    "laya:install": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/install-laya.ps1",
     "check": "npm run typecheck && npm test",
     "typecheck": "tsc --noEmit",
     "pretest": "node -e \"require('node:fs').rmSync('.test-build',{recursive:true,force:true})\"",

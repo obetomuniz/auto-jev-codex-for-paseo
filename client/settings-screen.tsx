@@ -99,6 +99,9 @@ export function SettingsScreen({ theme }: PluginSurfaceProps) {
           <SettingsInput key={`layaPython-${formKey}`} label="Python executable"
             hint="Use the Python executable in the environment where Laya is installed. Do not include command arguments."
             initialValue={draft.layaPython} onChangeText={(layaPython) => setDraft((current) => ({ ...current, layaPython }))} disabled={!ready} />
+          <SettingsInput key={`layaCache-${formKey}`} label="Model cache"
+            hint="Keep the model cache in the plugin directory. The Windows installer configures this field."
+            initialValue={draft.layaCache} onChangeText={(layaCache) => setDraft((current) => ({ ...current, layaCache }))} disabled={!ready} />
           <SettingsSelect label="Laya model" value={draft.layaModel}
             options={[{ label: "Multilingual (includes Portuguese)", value: "multilingual" }, { label: "English", value: "english" }, { label: "Typed decisions (specialized)", value: "typed-decisions" }]}
             onValueChange={(layaModel) => setDraft((current) => ({ ...current, layaModel }))} disabled={!ready} />
@@ -241,7 +244,7 @@ export function SettingsScreen({ theme }: PluginSurfaceProps) {
         <SettingsCard>
           <SettingsAction
             label={save.isSuccess ? "Saved" : "Write settings on this daemon"}
-            actionLabel={save.isPending ? "Saving…" : "Save"}
+            actionLabel={save.isPending ? "Savingâ€¦" : "Save"}
             disabled={!ready || save.isPending}
             onPress={() => {
               void save.mutateAsync();
