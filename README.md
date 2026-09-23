@@ -1,4 +1,4 @@
-# Auto Mode for Paseo
+# Auto Mode for Paseo — Jev + Laya model routing
 
 Auto Mode for Paseo is a model router for [Paseo](https://github.com/getpaseo/paseo).
 It uses TypeSafe Jev or local Laya to classify each new message. It then starts a Codex turn
