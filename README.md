@@ -1,5 +1,7 @@
 # Auto Mode for Paseo
 
+![Three Paseo sessions. Each message shows the routing notice with the selected persona, model, task type, and depth.](docs/hero.png)
+
 Auto Mode for Paseo is a [Paseo](https://github.com/getpaseo/paseo) plugin.
 It reads each new message and sends it to the best persona for the task.
 Each persona has its own provider, model, reasoning setting, and instructions.
