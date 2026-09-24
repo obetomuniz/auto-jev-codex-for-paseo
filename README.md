@@ -1,8 +1,10 @@
-# Auto Mode for Paseo — Jev + Laya model routing
+# Auto Mode for Paseo
 
-Auto Mode for Paseo is a model router for [Paseo](https://github.com/getpaseo/paseo).
-It uses TypeSafe Jev or local Laya to classify each new message. It then selects a
-persona. Each persona has an editable provider, model, reasoning setting, and instructions.
+Auto Mode for Paseo is a [Paseo](https://github.com/getpaseo/paseo) plugin.
+It reads each new message and sends it to the best persona for the task.
+Each persona has its own provider, model, reasoning setting, and instructions.
+A persona can use Codex, Claude, OpenCode, or another provider installed in Paseo.
+TypeSafe Jev or a local Laya model classifies the message.
 
 The conversation picker contains Auto and persona names. Model names stay in
 the plugin settings. Paseo owns workspaces and native provider authentication.
