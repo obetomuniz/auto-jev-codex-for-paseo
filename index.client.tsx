@@ -4,7 +4,7 @@ import { SettingsScreen } from "./client/settings-screen";
 export default function contribute(client: PluginClientContext) {
   return client.addSettingsScreen({
     id: "auto-mode-for-paseo",
-    title: "Auto Mode for Paseo",
+    title: "Settings",
     icon: "GitBranch",
     Component: SettingsScreen,
   });

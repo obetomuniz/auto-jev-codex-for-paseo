@@ -9,19 +9,22 @@ import { evaluateRoute } from "../server/jev";
 import { pickIntent, type RouteAnswers } from "../server/classifier";
 import { LayaClassifier, disposeLaya } from "../server/laya";
 import { defaults } from "../shared/settings";
-import { answers } from "./fixtures";
+import { answers, wireAnswers } from "./fixtures";
+import * as workspaceState from "../server/workspace-state";
 
 const choice = (value: string) => ({ type: "choice" as const, choice: value, probabilities: { [value]: 1 }, confidence: 1 });
 
 async function harness(t: TestContext) {
-  t.mock.method(fs, "readFile", async () => JSON.stringify({ ...defaults, apiKey: "test-key" }));
+  t.mock.method(workspaceState, "readWorkspaceState", async () => ({ status: "unavailable" as const }));
+  const settings = { ...defaults, apiKey: "test-key", personas: defaults.personas.map((persona) => ({ ...persona })) };
+  t.mock.method(fs, "readFile", async () => JSON.stringify(settings));
   let result: RouteAnswers = answers();
   const states: Record<string, unknown>[] = [];
   let classificationGate: Promise<void> | undefined;
   t.mock.method(globalThis, "fetch", async (...[_url, init]: Parameters<typeof fetch>) => {
     states.push(JSON.parse(String(init?.body)).state);
     await classificationGate;
-    return Response.json({ answers: result });
+    return Response.json({ answers: wireAnswers(result, settings.personas) });
   });
   let notify: (event: CodexNotification) => void = () => {};
   let request: (event: CodexServerRequest) => Promise<unknown> = async () => {};
@@ -56,7 +59,7 @@ async function harness(t: TestContext) {
   await connection.send({ type: "session.open", sessionId: "s", requestId: "open", history: "skip", config });
   let message = 0;
   return {
-    connection, calls, states, events, config,
+    connection, calls, states, events, config, settings,
     setResult(value: RouteAnswers) { result = value; },
     gate(value: Promise<void> | undefined) { classificationGate = value; },
     fail(value: boolean) { failStart = value; },
@@ -66,7 +69,7 @@ async function harness(t: TestContext) {
         clientMessageId: "message-" + ++message, delivery, input: { type: "message", content: [{ type: "text", text }] },
       } });
     },
-    complete() { notify({ method: "turn/completed", params: { threadId: "thread", turn: { id: "turn-" + turn, status: "completed" } } }); },
+    complete(status = "completed") { notify({ method: "turn/completed", params: { threadId: "thread", turn: { id: "turn-" + turn, status } } }); },
     item(item: Record<string, unknown>) { notify({ method: "item/completed", params: { threadId: "thread", item } }); },
     request(event: CodexServerRequest) { return request(event); },
     latest() { return calls.filter((call) => call.method === "turn/start").at(-1)!.params; },
@@ -86,7 +89,7 @@ test("bounded routing context clips text, removes unsupported roles and updates 
 
 test("invalid intentions and scores fail closed", async (t) => {
   assert.throws(() => pickIntent(answers({ intent: choice("unknown") })), /unknown intent/);
-  t.mock.method(globalThis, "fetch", async () => Response.json({ answers: answers({ intent: { ...choice("implement"), confidence: 2 } }) }));
+  t.mock.method(globalThis, "fetch", async () => Response.json({ answers: wireAnswers(answers({ intent: { ...choice("implement"), confidence: 2 } })) }));
   await assert.rejects(evaluateRoute({ apiKey: "key", model: "jev", prompt: "Fix it" }), /not a choice/);
 });
 
@@ -149,15 +152,39 @@ test("manual model, speed, plan and permissions override routing without leaking
   assert.ok(!JSON.stringify(saved.persistence).includes("full-access"));
 });
 
-test("Auto routes standard implementation to Terra and complex implementation to Sol", async (t) => {
+test("Codex persona work mode changes the approval reviewer and preserves intent and Plan boundaries", async (t) => {
   const h = await harness(t);
-  h.setResult(answers({ lane: choice("standard"), effort: choice("medium") }));
-  await h.send("Add a bounded validation rule with tests");
+  const persona = h.settings.personas.find((item) => item.id === "tech-lead")!;
+  await h.configure({ model: persona.id, settings: { modelScope: "pinned" } });
+  for (const workMode of ["", "auto", "auto-review", "auto"]) {
+    persona.workMode = workMode;
+    await h.send("Implement the change");
+    assert.equal(h.latest().approvalsReviewer, workMode === "auto" ? "user" : "auto_review");
+    assert.equal(h.latest().approvalPolicy, "on-request");
+    assert.equal(h.latest().sandboxPolicy.type, "workspaceWrite");
+    h.complete();
+  }
+  h.setResult(answers({ intent: choice("review") }));
+  await h.send("Review the change");
+  assert.equal(h.latest().sandboxPolicy.type, "readOnly");
+  assert.equal(h.latest().approvalsReviewer, "user");
+  h.complete();
+  await h.configure({ settings: { permissions: "full-access" }, mode: "plan" });
+  await h.send("Plan the next change");
+  assert.equal(h.latest().sandboxPolicy.type, "readOnly");
+  assert.equal(h.latest().approvalPolicy, "on-request");
+  assert.equal(h.latest().collaborationMode.mode, "plan");
+});
+
+test("Auto uses Writer for prose and Tech Lead for code delivery", async (t) => {
+  const h = await harness(t);
+  h.setResult(answers({ taskType: choice("write"), personaScores: { writer: 1 }, effort: choice("medium") }));
+  await h.send("Rewrite the installation guide for beginners");
   assert.equal(h.latest().model, "gpt-5.6-terra");
   assert.equal(h.latest().effort, "medium");
 
   h.complete();
-  h.setResult(answers({ lane: choice("lead"), effort: choice("high") }));
+  h.setResult(answers({ personaScores: { "tech-lead": 1 }, effort: choice("high") }));
   await h.send("Refactor the cross-service authentication flow");
   assert.equal(h.latest().model, "gpt-5.6-sol");
   assert.equal(h.latest().effort, "high");
@@ -172,10 +199,15 @@ test("failed classification never starts Codex and failed starts preserve one-sh
   h.setResult(answers());
   h.fail(true);
   await h.send("Tente de novo");
+  assert.ok(!h.events.some((event) => event.type === "timeline.item" && event.item.type === "notification" && event.item.id.startsWith("auto-route:")));
   h.fail(false);
   await h.send("Tente novamente");
   assert.equal(h.latest().model, defaults.autoCodexModelCheap);
   assert.equal(h.states.at(-1)!.recentConversation, undefined);
+  const notices = h.events.flatMap((event) => event.type === "timeline.item" && event.item.type === "notification" && event.item.id.startsWith("auto-route:") ? [event.item.message] : []);
+  assert.equal(notices.length, 1);
+  assert.match(notices[0], /Selected: Reporter/);
+  assert.match(notices[0], /Mode: Auto-review/);
 });
 
 test("pinned selections survive reopening, but provider persistence cannot grant full access", async (t) => {
@@ -228,6 +260,26 @@ test("parallel prompts cannot race classification and steering preserves current
   assert.equal(h.latest().collaborationMode.mode, "plan");
 });
 
+test("Stop during workspace assessment prevents classification and provider startup", async (t) => {
+  const h = await harness(t);
+  let release!: () => void;
+  let started!: () => void;
+  const ready = new Promise<void>((resolve) => { started = resolve; });
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  t.mock.method(workspaceState, "readWorkspaceState", async () => {
+    started(); await gate; return { status: "unavailable" as const };
+  });
+  const pending = h.send("Implement the change");
+  await ready;
+  await h.connection.send({ type: "session.interrupt", sessionId: "s", requestId: "stop" });
+  release();
+  await pending;
+  assert.equal(h.states.length, 0);
+  assert.equal(h.calls.length, 0);
+  await h.send("Try again");
+  assert.equal(h.calls.filter((call) => call.method === "turn/start").length, 1);
+});
+
 test("Plan questions forward the actual selection and allow skipping without inventing an answer", async (t) => {
   const h = await harness(t);
   await h.send("Planeje");
@@ -237,9 +289,72 @@ test("Plan questions forward the actual selection and allow skipping without inv
       { id: "extra", header: "Extra", question: "Algo mais?", options: [] },
     ],
   } });
-  await h.connection.send({ type: "session.permission", sessionId: "s", permissionId: "codex:9:format", response: { behavior: "allow", selectedActionId: "answer:1" } });
-  await h.connection.send({ type: "session.permission", sessionId: "s", permissionId: "codex:9:extra", response: { behavior: "deny" } });
+  const permission = h.events.filter((event) => event.type === "session.permission").at(-1)!;
+  assert.equal(permission.request.id, "codex:9");
+  assert.equal((permission.request.input?.questions as unknown[]).length, 2);
+  await h.connection.send({ type: "session.permission", sessionId: "s", permissionId: "codex:9", response: { behavior: "allow", updatedInput: { answers: { Formato: "JSON", Extra: "" } } } });
   assert.deepEqual(await result, { answers: { format: { answers: ["JSON"] }, extra: { answers: [] } } });
+});
+
+test("interrupt during classification prevents startup, and question responses work synchronously", async (t) => {
+  const h = await harness(t);
+  let release!: () => void;
+  h.gate(new Promise<void>((resolve) => { release = resolve; }));
+  const pending = h.send("Implement the change");
+  await h.connection.send({ type: "session.interrupt", sessionId: "s", requestId: "stop" });
+  release();
+  await pending;
+  assert.equal(h.calls.length, 0);
+  h.gate(undefined);
+  await h.send("Try again");
+  const respond = h.connection.onEvent((event) => {
+    if (event.type === "session.permission") void h.connection.send({ type: "session.permission", sessionId: "s", permissionId: event.request.id,
+      response: { behavior: "allow", updatedInput: { answers: { First: "A", Second: "Free text", Third: "C" } } },
+    });
+  });
+  const result = await h.request({ id: 42, method: "tool/requestUserInput", params: { questions: [
+    { id: "a", header: "First", question: "First?" }, { id: "b", header: "Second", question: "Second?" }, { id: "c", header: "Third", question: "Third?" },
+  ] } });
+  respond();
+  assert.deepEqual(result, { answers: { a: { answers: ["A"] }, b: { answers: ["Free text"] }, c: { answers: ["C"] } } });
+});
+
+test("interrupt while Codex start is pending stops the returned turn and permits another prompt", async (t) => {
+  const h = await harness(t);
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const original = CodexAppServer.prototype.request;
+  t.mock.method(CodexAppServer.prototype, "request", async function (this: CodexAppServer, method: string, params: unknown) {
+    const result = await original.call(this, method, params);
+    if (method === "turn/start") await gate;
+    if (method === "turn/interrupt") h.complete("interrupted");
+    return result;
+  });
+  const pending = h.send("Implement the change");
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(h.calls.filter((call) => call.method === "turn/start").length, 1);
+  await h.connection.send({ type: "session.interrupt", sessionId: "s", requestId: "stop" });
+  release();
+  await pending;
+  assert.deepEqual(h.calls.find((call) => call.method === "turn/interrupt")?.params, { threadId: "thread", turnId: "turn-1" });
+  assert.deepEqual(h.events.filter((event) => event.type === "session.turn").map((event) => event.state), ["started", "canceled"]);
+  await h.send("Try again");
+  assert.equal(h.calls.filter((call) => call.method === "turn/start").length, 2);
+});
+
+test("Codex completion arriving before its start reply is emitted after the turn starts", async (t) => {
+  const h = await harness(t);
+  await h.send("First turn");
+  h.complete();
+  const original = CodexAppServer.prototype.request;
+  t.mock.method(CodexAppServer.prototype, "request", async function (this: CodexAppServer, method: string, params: unknown) {
+    const result = await original.call(this, method, params);
+    if (method === "turn/start") h.complete();
+    return result;
+  });
+  const start = h.events.length;
+  await h.send("Second turn");
+  assert.deepEqual(h.events.slice(start).filter((event) => event.type === "session.turn").map((event) => event.state), ["started", "completed"]);
 });
 
 
@@ -290,7 +405,65 @@ test("a Laya failure never starts a Codex turn or calls TypeSafe", async (t) => 
 });
 
 for (const classifier of ["jev", "laya"] as const) {
-  test(`${classifier} selects models by complexity while intent alone limits Auto-review access`, async (t) => {
+  test(`${classifier} uses workspace-informed depth despite a higher shallow scope score`, async (t) => {
+    const h = await harness(t);
+    h.settings.classifier = classifier;
+    // Two review owners: a Standard-depth setup with the best scope fit and the Expert Critic.
+    Object.assign(h.settings.personas.find((persona) => persona.id === "reporter")!, { effort: "high", taskTypes: ["review"], taskTypesAuto: false });
+    let workspace: workspaceState.WorkspaceState = { status: "available", basis: "uncommitted", files: 1, added: 1, removed: 0, binary: 0, untracked: 0, capped: false };
+    t.mock.method(workspaceState, "readWorkspaceState", async (cwd: string) => {
+      assert.equal(cwd, h.config.cwd);
+      return workspace;
+    });
+    const classify = (state: Record<string, unknown>) => {
+      assert.deepEqual(state.workspace, workspace);
+      assert.equal(state.request, "are the changes here good ?");
+      return answers({ intent: choice("review"), effort: choice(workspace.status === "available" && workspace.files > 1 ? "high" : "low"),
+        personaScores: { reporter: 0.98, critic: 0.85, staff: 0.2, writer: 0.15, "tech-lead": 0.1 } });
+    };
+    if (classifier === "jev") t.mock.method(globalThis, "fetch", async (...[_url, init]: Parameters<typeof fetch>) => {
+      return Response.json({ answers: wireAnswers(classify(JSON.parse(String(init?.body)).state), h.settings.personas) });
+    });
+    else {
+      t.mock.method(LayaClassifier.prototype, "evaluate", async (input: Parameters<LayaClassifier["evaluate"]>[0]) => classify({ request: input.prompt, workspace: input.workspace }));
+      t.after(disposeLaya);
+    }
+    await h.send("are the changes here good ?");
+    assert.equal(h.latest().model, defaults.personas.find((persona) => persona.id === "reporter")!.model);
+    h.complete();
+    workspace = { ...workspace, files: 41, added: 2300, removed: 418 };
+    await h.send("are the changes here good ?");
+    assert.equal(h.latest().model, defaults.personas.find((persona) => persona.id === "critic")!.model);
+    assert.equal(h.latest().sandboxPolicy.type, "readOnly");
+    assert.equal(h.latest().collaborationMode.mode, "default");
+    const notifications = h.events.filter((event) => event.type === "timeline.item" && event.item.type === "notification");
+    assert.equal(notifications.length, 2, "Each started turn must have one summary.");
+    const latest = notifications.at(-1)!;
+    assert.ok(latest.type === "timeline.item" && latest.item.type === "notification" && /Auto: Critic.*Type: Review.*Depth: Deep/.test(latest.item.message));
+  });
+
+  test(`${classifier} starts a read-only turn for a generic message with low persona fit`, async (t) => {
+    const h = await harness(t);
+    t.mock.method(fs, "readFile", async () => JSON.stringify({ ...defaults, classifier, apiKey: "test-key", thresholdPersona: 0.9 }));
+    const result = answers({ intent: choice("discuss"), taskType: choice("other"), personaScores: {
+      critic: 0.01, reporter: 0.03, staff: 0.01, "tech-lead": 0.04, writer: 0.08,
+    } });
+    h.setResult(result);
+    if (classifier === "laya") {
+      t.mock.method(LayaClassifier.prototype, "evaluate", async () => result);
+      t.after(disposeLaya);
+    }
+    await h.send("testing");
+    const starts = h.calls.filter((call) => call.method === "turn/start");
+    assert.equal(starts.length, 1, "Low fit must still start a provider turn.");
+    assert.equal(h.latest().model, defaults.personas.find((persona) => persona.id === "writer")!.model);
+    assert.equal(h.latest().sandboxPolicy.type, "readOnly");
+    assert.equal(h.latest().collaborationMode.mode, "default");
+    assert.equal(h.latest().approvalPolicy, "on-request");
+    if (classifier === "laya") assert.equal(h.states.length, 0);
+  });
+
+  test(`${classifier} selects semantic roles without changing access boundaries`, async (t) => {
     const h = await harness(t);
     t.mock.method(fs, "readFile", async () => JSON.stringify({ ...defaults, classifier, apiKey: "test-key" }));
     let result = answers();
@@ -303,19 +476,21 @@ for (const classifier of ["jev", "laya"] as const) {
       ["discuss", "standard", "medium", "Explain how this validation works", "gpt-5.6-terra"],
       ["discuss", "lead", "high", "Investigate this race across components", "gpt-5.6-sol"],
       ["discuss", "staff", "xhigh", "Design cross-region consistency under conflicting constraints", "gpt-6-astra"],
-      ["review", "standard", "medium", "Review this validation rule", "gpt-5.6-terra"],
-      ["review", "lead", "high", "Review error recovery across these components", "gpt-5.6-sol"],
+      ["review", "review", "medium", "Review this validation rule", defaults.personas.find((persona) => persona.id === "critic")!.model],
+      ["review", "review", "high", "Review error recovery across these components", defaults.personas.find((persona) => persona.id === "critic")!.model],
       ["review", "review", "xhigh", "Audit tenant isolation across services", "gpt-6-astra"],
-      ["implement", "cheap", "low", "Fix the spelling mistake", "gpt-5.6-luna"],
-      ["implement", "standard", "medium", "Add the validation rule", "gpt-5.6-terra"],
+      ["implement", "lead", "high", "Rename this local variable", "gpt-5.6-sol"],
+      ["implement", "standard", "medium", "Rewrite the validation guide", "gpt-5.6-terra"],
       ["implement", "lead", "high", "Implement recovery across components", "gpt-5.6-sol"],
     ] as const;
     for (const [intent, lane, effort, prompt, model] of cases) {
-      result = answers({ intent: choice(intent), lane: choice(lane), effort: choice(effort) });
+      const persona = ({ cheap: "reporter", standard: "writer", lead: "tech-lead", staff: "staff", review: "critic" } as const)[lane];
+      const taskType = ({ reporter: "report", writer: "write", "tech-lead": "implement", staff: "design", critic: "review" } as const)[persona];
+      result = answers({ intent: choice(intent), taskType: choice(taskType), personaScores: { [persona]: 1 }, effort: choice(effort) });
       h.setResult(result);
       await h.send(prompt);
       assert.equal(h.latest().model, model, prompt);
-      assert.equal(h.latest().effort, effort);
+      assert.equal(h.latest().effort, intent === "review" ? defaults.personas.find((persona) => persona.id === "critic")!.effort : effort);
       assert.equal(h.latest().sandboxPolicy.type, intent === "implement" ? "workspaceWrite" : "readOnly", prompt);
       assert.equal(h.latest().approvalPolicy, "on-request");
       assert.equal(h.latest().approvalsReviewer, "auto_review");

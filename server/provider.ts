@@ -11,16 +11,21 @@ import {
 } from "@getpaseo/plugin/server/provider";
 import { CodexAppServer, type CodexNotification, type CodexServerRequest } from "./codex-app-server";
 import { type Intent } from "./classifier";
-import { routePrompt, selectCodexModel } from "./routing";
+import { routePrompt } from "./routing";
 import { loadSettings } from "./settings-store";
 import { appendContext, readContext, type ContextEntry } from "./route-context";
 import { collaborationModes, controlSettings, parseControls, type Controls } from "./session-controls";
+
+import { parseQuestions, questionAnswers, type Questions } from "./questions";
+import { PaseoExecution, type PaseoAccess } from "./paseo-execution";
+import { appendHandoff, readHandoff, handoffPrompt } from "./handoff";
+import { executionNotice } from "./execution-notice";
+import { readWorkspaceState } from "./workspace-state";
 
 type JsonValue = ProviderSessionConfig["settings"][string];
 
 const PROVIDER_ID = "auto-mode-for-paseo";
 const MODEL_ID = "auto-mode-for-paseo";
-const MANUAL_MODEL_IDS = ["gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"] as const;
 const SUPPORTED_CAPABILITIES = [
   "prompt.message",
   "prompt.image",
@@ -70,9 +75,14 @@ type SessionRuntime = {
   id: string;
   config: ProviderSessionConfig;
   codex: CodexAppServer | null;
+  native: PaseoExecution | null;
+  handoffContext: ContextEntry[];
+  lastProvider: string | null;
+  generation: number;
   threadId: string | null;
   activeTurnId: string | null;
   finishedTurns: Set<string>;
+  deferredTurns: ProviderEvent[];
   messages: Map<string, string>;
   permissions: Map<string, PendingPermission>;
   historyRestored: boolean;
@@ -89,17 +99,17 @@ type PendingPermission = {
   request: CodexServerRequest;
   resolve(value: unknown): void;
   reject(reason: Error): void;
-  question?: { id: string; options: string[] };
+  questions?: Questions;
 };
 
-export function createAutoModeProvider(): ProviderRegistration {
+export function createAutoModeProvider(paseo?: PaseoAccess): ProviderRegistration {
   return {
     id: PROVIDER_ID,
     label: "Auto Mode for Paseo",
-    description: "The classifier selects a Codex model for every new turn using the local Codex session.",
+    description: "Route each turn to a configured persona and its provider.",
     async connect(request) {
       return new AutoModeConnection(
-        negotiateProviderCapabilities(request.capabilities, SUPPORTED_CAPABILITIES),
+        negotiateProviderCapabilities(request.capabilities, SUPPORTED_CAPABILITIES), paseo,
       );
     },
   };
@@ -111,7 +121,7 @@ class AutoModeConnection implements ProviderConnection {
   private readonly listeners = new Set<(event: ProviderEvent) => void>();
   private readonly sessions = new Map<string, SessionRuntime>();
 
-  constructor(capabilities: readonly string[]) {
+  constructor(capabilities: readonly string[], private readonly paseo?: PaseoAccess) {
     this.capabilities = capabilities;
   }
 
@@ -181,7 +191,7 @@ class AutoModeConnection implements ProviderConnection {
     }
     const saved = asRecord(input.persistence?.data);
     const requestedModel = input.config.model ?? stringValue(saved?.selectedModel) ?? MODEL_ID;
-    const selectedModel = requestedModel === "auto-jev-codex-for-paseo" ? MODEL_ID : requestedModel;
+    const selectedModel = await normalizePersonaSelection(requestedModel);
     const mode = input.config.mode ?? stringValue(saved?.mode) ?? "auto";
     const models = await modelCatalog();
     let controls: Controls;
@@ -203,9 +213,14 @@ class AutoModeConnection implements ProviderConnection {
       id: input.sessionId,
       config: input.config,
       codex: null,
+      native: null,
+      handoffContext: readHandoff(saved?.handoffContext ?? saved?.routingContext),
+      lastProvider: stringValue(saved?.lastProvider) ?? (threadIdFromPersistence(input.persistence) ? "codex" : null),
+      generation: 0,
       threadId: threadIdFromPersistence(input.persistence),
       activeTurnId: null,
       finishedTurns: new Set(),
+      deferredTurns: [],
       messages: new Map(),
       permissions: new Map(),
       historyRestored: false,
@@ -240,7 +255,11 @@ class AutoModeConnection implements ProviderConnection {
         settings: controlSettings(session.controls),
       },
     });
-    if (input.history === "replay" && session.threadId) {
+    if (input.history === "replay" && session.lastProvider && session.lastProvider !== "codex") {
+      for (const entry of session.handoffContext) {
+        this.emitTimeline(session.id, { type: entry.role === "user" ? "user_message" : "assistant_message", id: entry.id, text: entry.text });
+      }
+    } else if (input.history === "replay" && session.threadId) {
       try {
         await this.restoreHistory(session);
       } catch (error) {
@@ -263,7 +282,7 @@ class AutoModeConnection implements ProviderConnection {
       if (!session || session.closed || session.starting) throw new Error("Wait for the pending turn to start before changing settings.");
       const models = await modelCatalog();
       if (session.closed || session.starting) throw new Error("Session changed while loading configuration; try again.");
-      const model = input.changes.model === undefined ? session.selectedModel : input.changes.model ?? MODEL_ID;
+      const model = input.changes.model === undefined ? session.selectedModel : await normalizePersonaSelection(input.changes.model ?? MODEL_ID);
       const mode = input.changes.mode === undefined ? session.mode : input.changes.mode ?? "auto";
       if (!models.some((item) => item.id === model) || (mode !== "auto" && mode !== "default" && mode !== "plan") || input.changes.thinkingOption !== undefined) {
         throw new Error("Choose a configured model and a supported collaboration mode.");
@@ -288,11 +307,12 @@ class AutoModeConnection implements ProviderConnection {
   }
 
   private persist(session: SessionRuntime): void {
-    if (session.threadId && !session.closed) this.emit({ type: "session.persistence", sessionId: session.id, persistence: persistenceFor(session) });
+    if (session.config.persist && !session.closed) this.emit({ type: "session.persistence", sessionId: session.id, persistence: persistenceFor(session) });
   }
 
   private remember(session: SessionRuntime, entry: ContextEntry): void {
     session.routingContext = appendContext(session.routingContext, entry);
+    session.handoffContext = appendHandoff(session.handoffContext, entry);
     this.persist(session);
   }
 
@@ -337,8 +357,10 @@ class AutoModeConnection implements ProviderConnection {
     });
 
     session.starting = true;
+    const generation = session.generation;
     try {
       if (session.activeTurnId && prompt.delivery === "steer") {
+        if (session.native) throw new Error("This provider cannot steer an active turn through Paseo. Wait for it to finish or interrupt it first.");
         const codex = session.codex;
         if (!codex || !session.threadId) {
           throw new Error("Codex is not ready to steer the active turn.");
@@ -360,52 +382,99 @@ class AutoModeConnection implements ProviderConnection {
       }
 
       if (session.threadId && !session.contextLoaded) await this.restoreHistory(session, false);
-      const route = await routePrompt(message.routeText, session.routingContext);
-      if (session.closed) return;
       const manual = session.selectedModel !== MODEL_ID;
-      const model = manual ? session.selectedModel : route.model;
+      const settings = await loadSettings();
+      const workspace = await readWorkspaceState(session.config.cwd);
+      if (session.closed || session.generation !== generation) throw new Error("Turn canceled during workspace assessment.");
+      const route = await routePrompt(message.routeText, session.routingContext, settings, manual ? session.selectedModel : undefined, workspace);
+      if (session.closed || session.generation !== generation) throw new Error("Turn canceled during classification.");
+      const persona = settings.personas.find((item) => item.id === route.personaId)!;
+      const model = persona.model;
+      const effort = persona.effort;
       const plan = session.mode === "plan" || (session.mode === "auto" && route.plan);
       const fast = session.controls.fast === "on" || (session.controls.fast === "auto" && route.fast);
       const models = await modelCatalog();
-      if (session.closed) return;
-      this.emit({
-        type: "timeline.item",
-        sessionId,
-        item: {
-          type: "notification",
-          id: `auto-route:${prompt.clientMessageId}`,
-          level: "info",
-          message: `${manual ? "Manual model" : `${route.classifier === "laya" ? "Laya" : "Jev"} selected`} ${model}: ${route.intent}, ${route.lane}, ${route.effort}. Intent confidence: ${Math.round(route.confidence * 100)}%. Classification: ${route.classificationMs}ms. Context: ${session.routingContext.length} messages. Fast: ${fast ? "on" : "off"}. Plan: ${plan ? "on" : "off"}. Permissions: ${plan ? "plan (read-only)" : session.controls.permissions}.`,
-        },
-      });
+      if (session.closed || session.generation !== generation) throw new Error("Turn canceled during configuration.");
+      // Wait for the prior native run to stop before starting any replacement.
+      await session.native?.close();
+      session.native = null;
+      if (session.closed || session.generation !== generation) throw new Error("Turn canceled before provider startup.");
+      if (persona.provider !== "codex") {
+        if (!this.paseo) throw new Error("The Paseo host API is not available for this session.");
+        await session.codex?.close();
+        session.codex = null;
+        if (session.closed || session.generation !== generation) throw new Error("Turn canceled before provider startup.");
+        const execution = new PaseoExecution(this.paseo(), session.id, (event) => {
+          if (session.closed) return;
+          if (event.type === "timeline.item" && event.item.type === "assistant_message") {
+            this.remember(session, { id: event.item.id, role: "assistant", text: event.item.text });
+          }
+          if (event.type === "session.turn" && event.state !== "started") {
+            if (session.activeTurnId === event.turnId) session.activeTurnId = null;
+            session.finishedTurns.add(event.turnId);
+          }
+          this.emit(event);
+        });
+        session.native = execution;
+        await execution.start({
+          config: session.config, persona, manual, taskDepth: route.taskDepth, taskType: manual ? undefined : route.taskType, notices: route.notices,
+          policy: { provider: persona.provider, intent: route.intent, plan, fast, cwd: session.config.cwd, fullAccess: session.controls.permissions === "full-access" },
+          context: session.handoffContext, text: message.displayText,
+          images: prompt.input.content.filter((part): part is ComposerImageContent => part.type === "image").map(({ data, mimeType }) => ({ data, mimeType })),
+          clientMessageId: prompt.clientMessageId,
+          accepted: () => {
+            session.activeTurnId = execution.turnId;
+            session.lastProvider = persona.provider;
+            this.remember(session, { id: prompt.clientMessageId, role: "user", text: message.contextText });
+            if (manual && session.controls.modelScope === "next-turn") {
+              session.selectedModel = MODEL_ID;
+              this.emitConfig(session, models);
+              this.persist(session);
+            }
+          },
+        });
+        return;
+      }
+      session.native = null;
+      const returningToCodex = session.lastProvider !== null && session.lastProvider !== "codex";
       const codex = await this.ensureCodex(session, model);
-      if (session.closed) return;
+      if (session.closed || session.generation !== generation) throw new Error("Turn canceled during provider startup.");
       const previousContext = session.routingContext;
+      const previousHandoff = session.handoffContext;
+      session.handoffContext = appendHandoff(previousHandoff, { id: prompt.clientMessageId, role: "user", text: message.contextText });
       session.routingContext = appendContext(previousContext, {
         id: prompt.clientMessageId,
         role: "user",
         text: message.contextText,
       });
+      const modeLabel = plan ? "Plan" : session.controls.permissions === "full-access" ? "Full access"
+        : persona.workMode === "auto" ? "Default Permissions" : "Auto-review";
       const response = await codex.request<{ turn: AppServerTurn }>("turn/start", {
         threadId: session.threadId,
         clientUserMessageId: prompt.clientMessageId,
-        input: message.codexInput,
+        input: returningToCodex ? [{ type: "text", text: handoffPrompt(previousHandoff, message.displayText), text_elements: [] }, ...message.codexInput.filter((part) => part.type === "image")] : message.codexInput,
         model,
-        effort: route.effort,
+        effort: effort || null,
         sandboxPolicy: plan ? { type: "readOnly", networkAccess: true }
           : session.controls.permissions === "full-access" ? { type: "dangerFullAccess" }
           : sandboxForIntent(route.intent, session.config.cwd),
         approvalPolicy: session.controls.permissions === "full-access" && !plan ? "never" : "on-request",
-        approvalsReviewer: "auto_review",
+        // Send both values explicitly so switching personas cannot retain the
+        // preceding turn's auto-reviewer when Default Permissions is selected.
+        approvalsReviewer: persona.workMode === "auto" ? "user" : "auto_review",
         serviceTier: fast ? "fast" : "default",
         collaborationMode: {
           mode: plan ? "plan" : "default",
-          settings: { model, reasoning_effort: route.effort, developer_instructions: null },
+          settings: { model, reasoning_effort: effort || null, developer_instructions: persona.instructions || null },
         },
       }).catch((error) => {
         session.routingContext = previousContext;
+        session.handoffContext = previousHandoff;
+        session.deferredTurns = [];
         throw error;
       });
+      if (session.closed) return;
+      session.lastProvider = "codex";
       this.persist(session);
       session.contextLoaded = true;
       if (manual && session.controls.modelScope === "next-turn") {
@@ -422,6 +491,19 @@ class AutoModeConnection implements ProviderConnection {
         result: { type: "turn", turnId },
       });
       this.emit({ type: "session.turn", sessionId, turnId, state: "started" });
+      this.emitTimeline(sessionId, { type: "notification", id: `auto-route:${prompt.clientMessageId}`, level: "info",
+        message: executionNotice({ persona, intent: route.intent, manual, effort, fast, modeLabel, taskDepth: route.taskDepth, taskType: manual ? undefined : route.taskType, notices: route.notices }),
+      });
+      for (const event of session.deferredTurns.splice(0)) this.emit(event);
+      // Stop can arrive before turn/start returns the ID needed by Codex.
+      if (session.generation !== generation && session.activeTurnId === turnId) {
+        try {
+          await codex.request("turn/interrupt", { threadId: session.threadId, turnId });
+        } catch (error) {
+          this.emitTimeline(sessionId, { type: "notification", id: `interrupt-failed:${turnId}`, level: "error",
+            message: `Could not stop the starting turn. Try Stop again. ${error instanceof Error ? error.message : String(error)}` });
+        }
+      }
     } catch (error) {
       this.emitPromptFailure(
         sessionId,
@@ -481,11 +563,12 @@ class AutoModeConnection implements ProviderConnection {
     if (session.historyRestored || !session.threadId) return;
     const codex = await this.ensureCodex(session, "gpt-6-astra");
     const turns = await this.readHistoryTurns(codex, session.threadId);
-    session.routingContext = [];
+    const hydrate = !session.contextLoaded;
+    if (hydrate) session.routingContext = [];
     for (const turn of turns) {
       const items = await this.readTurnItems(codex, session.threadId, turn);
       for (const item of items) {
-        this.captureHistoricalContext(session, item);
+        if (hydrate) this.captureHistoricalContext(session, item);
         if (replay) this.emitHistoricalItem(session, item);
       }
     }
@@ -553,6 +636,7 @@ class AutoModeConnection implements ProviderConnection {
     const text = role === "user" ? historicalUserText(item.content) : stringValue(item.text) ?? "";
     const id = role === "user" ? stringValue(item.clientId) ?? item.id : item.id;
     session.routingContext = appendContext(session.routingContext, { id, role, text });
+    session.handoffContext = appendHandoff(session.handoffContext, { id, role, text });
   }
 
   private emitHistoricalItem(session: SessionRuntime, rawItem: unknown): void {
@@ -617,13 +701,15 @@ class AutoModeConnection implements ProviderConnection {
       const error = asRecord(turn.error);
       const message = error && stringValue(error.message);
       const state = status === "completed" ? "completed" : status === "interrupted" ? "canceled" : "failed";
-      this.emit({
+      const event: ProviderEvent = {
         type: "session.turn",
         sessionId: session.id,
         turnId,
         state,
         ...(message ? { error: { message } } : {}),
-      });
+      };
+      if (session.starting && session.activeTurnId !== turnId) session.deferredTurns.push(event);
+      else this.emit(event);
       session.finishedTurns.add(turnId);
       if (session.activeTurnId === turnId) session.activeTurnId = null;
       return;
@@ -690,45 +776,25 @@ class AutoModeConnection implements ProviderConnection {
   }
 
   private async requestQuestions(session: SessionRuntime, request: CodexServerRequest): Promise<unknown> {
-    const params = asRecord(request.params);
-    if (!Array.isArray(params?.questions)) throw new Error("Invalid Codex questions.");
-    const answers: Record<string, { answers: string[] }> = {};
-    for (const raw of params.questions) {
-      if (session.closed) throw new Error("Session closed.");
-      const question = asRecord(raw);
-      if (!question || typeof question.id !== "string" || typeof question.question !== "string") throw new Error("Invalid Codex question.");
-      const options = Array.isArray(question.options) ? question.options.map(asRecord).filter((item) => item && typeof item.label === "string") : [];
-      const labels = options.map((option) => String(option!.label));
-      const permissionId = "codex:" + String(request.id) + ":" + question.id;
-      const answer = new Promise<string[]>((resolve, reject) => {
-        session.permissions.set(permissionId, {
-          request, resolve: (value) => resolve(value as string[]), reject,
-          question: { id: question.id as string, options: labels },
-        });
-      });
-      this.emit({
-        type: "session.permission", sessionId: session.id,
-        request: {
-          id: permissionId, name: "Plan question", kind: "question",
-          title: stringValue(question.header) ?? "Question",
-          description: question.question + options.map((option) => "\n" + option!.label + ": " + (option!.description ?? "")).join(""),
-          input: jsonRecord({ questions: [question] }),
-          actions: [
-            ...labels.map((label, index) => ({ id: "answer:" + index, label, behavior: "allow" as const })),
-            { id: "skip", label: "Skip", behavior: "deny" },
-          ],
-        },
-      });
-      answers[question.id] = { answers: await answer };
-    }
-    return { answers };
+    if (session.closed) throw new Error("Session closed.");
+    const questions = parseQuestions(request.params);
+    const permissionId = "codex:" + String(request.id);
+    const pending = new Promise<unknown>((resolve, reject) => {
+      session.permissions.set(permissionId, { request, resolve, reject, questions });
+    });
+    this.emit({ type: "session.permission", sessionId: session.id, request: {
+      id: permissionId, name: "request_user_input", kind: "question", title: "Questions",
+      input: jsonRecord({ questions }), metadata: jsonRecord({ questions }),
+      detail: { type: "plain_text", text: questions.map((question) => question.question).join("\n\n"), icon: "brain" },
+    } });
+    return pending;
   }
 
   private async requestPermission(
     session: SessionRuntime,
     request: CodexServerRequest,
   ): Promise<unknown> {
-    if (request.method === "item/tool/requestUserInput") return this.requestQuestions(session, request);
+    if (request.method === "item/tool/requestUserInput" || request.method === "tool/requestUserInput") return this.requestQuestions(session, request);
     if (!isApprovalRequest(request.method)) {
       throw new Error(`Auto Mode for Paseo does not yet support '${request.method}'.`);
     }
@@ -736,6 +802,9 @@ class AutoModeConnection implements ProviderConnection {
     const params = asRecord(request.params) ?? {};
     const command = stringValue(params.command);
     const reason = stringValue(params.reason);
+    const pending = new Promise<unknown>((resolve, reject) => {
+      session.permissions.set(permissionId, { request, resolve, reject });
+    });
     this.emit({
       type: "session.permission",
       sessionId: session.id,
@@ -752,9 +821,7 @@ class AutoModeConnection implements ProviderConnection {
         ],
       },
     });
-    return new Promise<unknown>((resolve, reject) => {
-      session.permissions.set(permissionId, { request, resolve, reject });
-    });
+    return pending;
   }
 
   private async respondToPermission(
@@ -763,22 +830,16 @@ class AutoModeConnection implements ProviderConnection {
     response: ProviderPermissionResponse,
   ): Promise<void> {
     const session = this.sessions.get(sessionId);
+    if (session?.native?.hasPermission(permissionId)) {
+      await session.native.respond(permissionId, response);
+      return;
+    }
     const pending = session?.permissions.get(permissionId);
     if (!session || !pending) {
       throw new Error(`Unknown Auto Mode for Paseo permission '${permissionId}'.`);
     }
-    if (pending.question) {
-      let answers: string[] = [];
-      if (response.behavior === "allow") {
-        const freeText = response.updatedInput?.answer;
-        const selected = response.selectedActionId;
-        if (typeof freeText === "string" && freeText.trim()) answers = [freeText.trim()];
-        else if (selected && /^answer:\d+$/.test(selected)) {
-          const label = pending.question.options[Number(selected.slice(7))];
-          if (label) answers = [label];
-        }
-        if (!answers.length) throw new Error("Choose an answer or skip the question.");
-      }
+    if (pending.questions) {
+      const answers = questionAnswers(pending.questions, response);
       session.permissions.delete(permissionId);
       pending.resolve(answers);
       this.emit({ type: "session.permission_resolved", sessionId, permissionId });
@@ -792,6 +853,16 @@ class AutoModeConnection implements ProviderConnection {
 
   private async interrupt(sessionId: string, requestId: string): Promise<void> {
     const session = this.sessions.get(sessionId);
+    if (session) session.generation += 1;
+    if (session?.native) {
+      try {
+        await session.native.close();
+        this.emit({ type: "request.completed", requestId });
+      } catch (error) {
+        this.emit({ type: "request.failed", requestId, error: { message: String(error) } });
+      }
+      return;
+    }
     if (!session?.codex || !session.threadId || !session.activeTurnId) {
       this.emit({ type: "request.completed", requestId });
       return;
@@ -820,7 +891,7 @@ class AutoModeConnection implements ProviderConnection {
       pending.reject(new Error("Auto Mode for Paseo session closed."));
     }
     session.permissions.clear();
-    await session.codex?.close();
+    await Promise.all([session.codex?.close(), session.native?.close()]);
   }
 
   private emitPromptFailure(sessionId: string, clientMessageId: string, message: string): void {
@@ -843,34 +914,26 @@ class AutoModeConnection implements ProviderConnection {
 
 async function modelCatalog() {
   const settings = await loadSettings();
-  const configuredModels = (["staff", "review", "cheap", "standard", "lead"] as const).map((lane) => selectCodexModel(lane, settings));
-  const ids = [...new Set([...MANUAL_MODEL_IDS, ...configuredModels])];
-  return [autoModel(), ...ids.filter((id) => id !== MODEL_ID).map((id) => ({
-    id, label: id, description: manualModelDescription(id), isDefault: false,
+  const personas = settings.personas.filter((persona) => persona.enabled);
+  return [autoModel(), ...personas.map((persona) => ({
+    id: persona.id, label: persona.name, description: persona.description, isDefault: false,
   }))];
 }
 
-function manualModelDescription(id: string): string {
-  const effort = "The selected classifier still classifies the request and selects effort.";
-  switch (id) {
-    case "gpt-6-astra":
-      return `Architecture with difficult tradeoffs, high-risk review, and deep system analysis. ${effort}`;
-    case "gpt-5.6-sol":
-      return `Complex implementation, investigation, explanation, and review. ${effort}`;
-    case "gpt-5.6-terra":
-      return `Balanced choice for bounded explanations, plans, reviews, implementation, and debugging. ${effort}`;
-    case "gpt-5.6-luna":
-      return `Direct factual questions and small mechanical tasks. ${effort}`;
-    default:
-      return `Configured manual model. ${effort}`;
-  }
+async function normalizePersonaSelection(value: string): Promise<string> {
+  if (value === "auto-jev-codex-for-paseo" || value === MODEL_ID) return MODEL_ID;
+  const settings = await loadSettings();
+  const direct = settings.personas.find((persona) => persona.id === value);
+  if (direct) return direct.id;
+  const legacy = settings.personas.find((persona) => persona.model === value);
+  return legacy?.id ?? value;
 }
 
 function autoModel() {
   return {
     id: MODEL_ID,
     label: "Auto Mode for Paseo",
-    description: "The classifier chooses the Codex model before every new turn.",
+    description: "The classifier chooses a configured persona before every new turn.",
     isDefault: true,
   };
 }
@@ -999,7 +1062,7 @@ function threadIdFromPersistence(persistence: ProviderPersistence | undefined): 
 
 function persistenceFor(session: SessionRuntime): ProviderPersistence {
   return { version: 1, data: {
-    threadId: session.threadId, routingContext: session.routingContext,
+    threadId: session.threadId, routingContext: session.routingContext, handoffContext: session.handoffContext, lastProvider: session.lastProvider,
     selectedModel: session.selectedModel, mode: session.mode,
     controls: { fast: session.controls.fast, modelScope: session.controls.modelScope },
   } };

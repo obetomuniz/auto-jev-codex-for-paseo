@@ -1,24 +1,33 @@
-import { evaluateRoute } from "./jev";
+import { evaluateRoute, typeSafeKey } from "./jev";
 import { evaluateLayaRoute } from "./laya";
 import {
-  pickEffort,
   pickExecution,
+  pickEffort,
   pickIntent,
-  pickLane,
+  pickTaskType,
   type Execution,
   type Intent,
-  type Lane,
 } from "./classifier";
-import { defaults, type ProviderSettings } from "../shared/settings";
+import { type ProviderSettings } from "../shared/settings";
 import type { ContextEntry } from "./route-context";
 import { loadSettings } from "./settings-store";
+import { selectPersona } from "../shared/personas";
+import { matchingPersona, taskTypeOwners } from "./persona-classification";
+import { TASK_TYPE_LABELS, type TaskType } from "../shared/task-types";
+import { depthRank, TASK_DEPTH_LABELS, type TaskDepth } from "../shared/task-depth";
+import type { WorkspaceState } from "./workspace-state";
 
 export type AutoRoute = {
   classifier: "jev" | "laya";
   intent: Intent;
-  lane: Lane;
+  personaId: string;
+  provider: string;
+  instructions: string;
   model: string;
   effort: string;
+  taskDepth: TaskDepth;
+  taskType: TaskType;
+  notices: string[];
   execution: Execution;
   fast: boolean;
   plan: boolean;
@@ -26,20 +35,32 @@ export type AutoRoute = {
   classificationMs: number;
 };
 
-export async function routePrompt(prompt: string, context: ContextEntry[] = []): Promise<AutoRoute> {
-  const settings = await loadSettings();
+export async function routePrompt(prompt: string, context: ContextEntry[] = [], settings?: ProviderSettings, selectedId?: string, workspace?: WorkspaceState): Promise<AutoRoute> {
+  settings ??= await loadSettings();
   const started = performance.now();
-  const answers = await classifyPrompt(prompt, context, settings);
-  const lane = pickLane(answers, {
-    staff: settings.thresholdStaff,
-    cheap: settings.thresholdCheap,
-  });
+  const answers = await classifyPrompt(prompt, context, settings, !selectedId, workspace);
+  const intent = pickIntent(answers);
+  const taskDepth = pickEffort(answers);
+  if (!taskDepth) throw new Error("Classifier returned an unknown task depth; no provider turn was started.");
+  const taskType = pickTaskType(answers);
+  const persona = selectPersona(settings, selectedId ?? matchingPersona(settings.personas, answers.personaScores, taskDepth, taskType));
+  const notices = selectedId ? [] : [
+    ...(taskType !== "other" && !taskTypeOwners(settings.personas, taskType).length
+      ? [`No persona is assigned to ${TASK_TYPE_LABELS[taskType]} tasks. Auto used the closest scope.`] : []),
+    ...(depthRank(persona.taskDepth) < depthRank(taskDepth)
+      ? [`No Auto persona is configured for ${TASK_DEPTH_LABELS[taskDepth]} tasks. Using the deepest available setup (${TASK_DEPTH_LABELS[persona.taskDepth]}).`] : []),
+  ];
   return {
     classifier: settings.classifier,
-    intent: pickIntent(answers),
-    lane,
-    model: selectCodexModel(lane, settings),
-    effort: pickEffort(answers) ?? selectCodexEffort(lane, settings),
+    intent,
+    personaId: persona.id,
+    provider: persona.provider,
+    instructions: persona.instructions,
+    model: persona.model,
+    effort: persona.effort,
+    taskDepth,
+    taskType,
+    notices,
     execution: pickExecution(answers),
     fast: answers.fast?.choice === "on",
     plan: answers.plan?.choice === "on",
@@ -48,34 +69,11 @@ export async function routePrompt(prompt: string, context: ContextEntry[] = []):
   };
 }
 
-export function selectCodexModel(lane: Lane, settings: ProviderSettings): string {
-  const key = {
-    staff: "autoCodexModelStaff",
-    review: "autoCodexModelReview",
-    cheap: "autoCodexModelCheap",
-    standard: "autoCodexModelStandard",
-    lead: "autoCodexModelLead",
-  } as const;
-  return settings[key[lane]].trim() || defaults[key[lane]];
-}
-
-export function selectCodexEffort(lane: Lane, settings: ProviderSettings): string {
-  const key = {
-    staff: "autoCodexEffortStaff",
-    review: "autoCodexEffortReview",
-    cheap: "autoCodexEffortCheap",
-    standard: "autoCodexEffortStandard",
-    lead: "autoCodexEffortLead",
-  } as const;
-  return settings[key[lane]].trim() || defaults[key[lane]];
-}
-
-export async function classifyPrompt(prompt: string, context: ContextEntry[], settings: ProviderSettings) {
+export async function classifyPrompt(prompt: string, context: ContextEntry[], settings: ProviderSettings, automatic = true, workspace?: WorkspaceState) {
+  const personas = automatic ? settings.personas : [];
   if (settings.classifier === "laya") {
-    return evaluateLayaRoute({ prompt, context, python: settings.layaPython, cache: settings.layaCache, model: settings.layaModel, device: settings.layaDevice });
+    return evaluateLayaRoute({ prompt, context, personas, workspace, python: settings.layaPython, cache: settings.layaCache, model: settings.layaModel, device: settings.layaDevice });
   }
-  if (settings.classifier !== "jev") throw new Error("Unknown classifier; no Codex turn was started.");
-  const apiKey = settings.apiKey.trim() || process.env.TYPESAFE_API_KEY?.trim() || "";
-  if (!apiKey) throw new Error("Configure the TypeSafe key for Jev in Settings > Plugins > Auto Mode for Paseo, or set TYPESAFE_API_KEY on the daemon.");
-  return evaluateRoute({ apiKey, model: settings.model.trim() || "jev-latest", prompt, context });
+  if (settings.classifier !== "jev") throw new Error("Unknown classifier; no provider turn was started.");
+  return evaluateRoute({ apiKey: typeSafeKey(settings), model: settings.model.trim() || "jev-latest", prompt, context, personas, workspace });
 }
