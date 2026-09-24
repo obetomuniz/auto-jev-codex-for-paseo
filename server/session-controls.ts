@@ -1,5 +1,6 @@
-import type { JsonValue } from "@getpaseo/protocol/agent-types";
-import type { ProviderSetting } from "@getpaseo/plugin/server/provider";
+import type { ProviderSessionConfig, ProviderSetting } from "@getpaseo/plugin/server/provider";
+
+type JsonValue = ProviderSessionConfig["settings"][string];
 
 export type Controls = {
   fast: "auto" | "on" | "off";
