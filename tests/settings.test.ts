@@ -1,8 +1,90 @@
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
-import { test } from "node:test";
+import { test, type TestContext } from "node:test";
 import { loadSettings, parseStoredSettings, saveSettings } from "../server/settings-store";
-import { defaults, toPublic } from "../shared/settings";
+import { defaults, settingsSchema, toPublic } from "../shared/settings";
+import { assignedTaskTypes } from "../shared/personas";
+
+test("task depth migration seeds templates once without reading model names or reasoning settings", () => {
+  const legacy = defaults.personas.map(({ taskDepth: _depth, ...persona }) => ({ ...persona, provider: "claude", effort: "high" }));
+  const migrated = parseStoredSettings({ personas: [...legacy, { ...legacy[0], id: "custom" }] });
+  assert.deepEqual(migrated.personas.slice(0, 5).map((persona) => persona.taskDepth), defaults.personas.map((persona) => persona.taskDepth));
+  assert.equal(migrated.personas[5].taskDepth, "medium");
+  assert.ok(migrated.personas.every((persona) => persona.provider === "claude" && persona.effort === "high"));
+  migrated.personas[0].taskDepth = "low";
+  assert.equal(parseStoredSettings(migrated).personas[0].taskDepth, "low");
+});
+
+test("task type migration seeds preset scopes only and preserves stored or edited tags", () => {
+  const legacy = defaults.personas.map(({ taskTypes: _types, taskTypesAuto: _auto, taskTypesScope: _scope, ...persona }) => persona);
+  const edited = { ...legacy[0], id: "custom", description: "Translate prose into Portuguese." };
+  const renamed = { ...legacy[2], id: "reviewer", name: "Reviewer" };
+  const migrated = parseStoredSettings({ personas: [...legacy, edited, renamed] });
+  assert.deepEqual(migrated.personas.slice(0, 5).map(assignedTaskTypes), defaults.personas.map((persona) => persona.taskTypes));
+  assert.equal(assignedTaskTypes(migrated.personas[5]), null, "An edited scope stays untagged until detection.");
+  assert.deepEqual(assignedTaskTypes(migrated.personas[6]), ["review"], "Seeding follows the scope, not the ID.");
+  const manual = { ...defaults.personas[0], taskTypes: ["write" as const], taskTypesAuto: false };
+  assert.deepEqual(parseStoredSettings({ personas: [manual] }).personas[0].taskTypes, ["write"]);
+});
+
+test("task type settings reject empty manual sets and duplicates", () => {
+  const persona = defaults.personas[0];
+  const parse = (values: Partial<typeof persona>) => settingsSchema.safeParse({ personas: [{ ...persona, ...values }] });
+  const empty = parse({ taskTypes: [], taskTypesAuto: false });
+  assert.equal(empty.success, false);
+  assert.deepEqual(empty.error!.issues[0].path, ["personas", 0, "taskTypes"]);
+  assert.equal(parse({ taskTypes: ["review", "review"] }).success, false);
+  assert.equal(parse({ taskTypes: [], taskTypesAuto: true }).success, true);
+  assert.equal(parse({ taskTypes: ["unknown" as never] }).success, false);
+});
+
+function mockSettingsWrites(t: TestContext, commit: (text: string) => void | Promise<void>) {
+  const temporary = new Map<string, string>();
+  t.mock.method(fs, "mkdir", async () => undefined);
+  t.mock.method(fs, "writeFile", async (path: unknown, content: unknown) => { temporary.set(String(path), String(content)); });
+  t.mock.method(fs, "rename", async (from: unknown, to: unknown) => {
+    assert.ok(String(to).endsWith("auto-mode-for-paseo.local.json"));
+    assert.ok(temporary.has(String(from)));
+    await commit(temporary.get(String(from))!);
+    temporary.delete(String(from));
+  });
+  t.mock.method(fs, "rm", async (path: unknown) => { temporary.delete(String(path)); });
+}
+
+test("settings writes preserve readable data until replacement and recover from a failed write", async (t) => {
+  const initial = { ...defaults, apiKey: "test-key" };
+  let stored = JSON.stringify(initial);
+  const temporary = new Map<string, string>();
+  let writeStarted!: () => void;
+  const started = new Promise<void>((resolve) => { writeStarted = resolve; });
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  let fail = true;
+  t.mock.method(fs, "readFile", async () => stored);
+  t.mock.method(fs, "mkdir", async () => undefined);
+  t.mock.method(fs, "writeFile", async (path: unknown, content: unknown) => {
+    if (String(path).endsWith(".local.json")) stored = "";
+    else temporary.set(String(path), "");
+    writeStarted();
+    await gate;
+    if (fail) throw new Error("Disk unavailable");
+    if (String(path).endsWith(".local.json")) stored = String(content);
+    else temporary.set(String(path), String(content));
+  });
+  t.mock.method(fs, "rename", async (from: unknown) => { stored = temporary.get(String(from))!; temporary.delete(String(from)); });
+  t.mock.method(fs, "rm", async (path: unknown) => { temporary.delete(String(path)); });
+  const pending = saveSettings({ ...initial, model: "jev-test-a" });
+  const rejected = assert.rejects(pending, /Disk unavailable/);
+  await started;
+  try { assert.deepEqual(await loadSettings(), initial); }
+  finally { release(); await rejected; }
+  assert.deepEqual(await loadSettings(), initial);
+  assert.equal(temporary.size, 0);
+  fail = false;
+  await saveSettings({ ...initial, apiKey: "", model: "jev-test-a" });
+  assert.equal((await loadSettings()).model, "jev-test-a");
+  assert.equal((await loadSettings()).apiKey, "test-key");
+});
 
 const blankModels = {
   autoCodexModelStaff: "",
@@ -58,14 +140,26 @@ test("provider settings retain blank fields and never expose the API key", () =>
 test("saving migrated settings preserves the key and model choices across reloads", async (t) => {
   let stored = JSON.stringify({ ...blankModels, apiKey: "test-key", fallbackStaff: "codex/custom" });
   t.mock.method(fs, "readFile", async () => stored);
-  t.mock.method(fs, "mkdir", async () => undefined);
-  t.mock.method(fs, "writeFile", async (...[_path, content]: Parameters<typeof fs.writeFile>) => { stored = String(content); });
+  mockSettingsWrites(t, (text) => { stored = text; });
   const loaded = await loadSettings();
-  const saved = await saveSettings({ ...loaded, apiKey: "", thresholdStaff: 0.9 });
+  const saved = await saveSettings({ ...loaded, apiKey: "", model: "jev-test-a" });
   assert.equal("apiKey" in saved, false);
   assert.equal(saved.hasApiKey, true);
   assert.equal("fallbackStaff" in JSON.parse(stored), false);
-  assert.deepEqual(await loadSettings(), { ...loaded, thresholdStaff: 0.9 });
+  assert.deepEqual(await loadSettings(), { ...loaded, model: "jev-test-a" });
+});
+
+test("saving deleted default personas preserves deletions, including an empty list", async (t) => {
+  let stored = JSON.stringify({ ...defaults, apiKey: "test-key" });
+  t.mock.method(fs, "readFile", async () => stored);
+  mockSettingsWrites(t, (text) => { stored = text; });
+  const remaining = defaults.personas.slice(1).map((persona) => ({ ...persona, model: "configured-model" }));
+  const saved = await saveSettings({ ...defaults, personas: remaining });
+  assert.deepEqual(saved.personas, remaining);
+  assert.deepEqual((await loadSettings()).personas, remaining);
+  await saveSettings({ ...defaults, personas: [] });
+  assert.deepEqual((await loadSettings()).personas, []);
+  assert.equal((await loadSettings()).apiKey, "test-key");
 });
 
 
@@ -88,10 +182,7 @@ test("legacy filename migrates on save and switching classifiers retains the sec
     if (current !== undefined) return current;
     throw Object.assign(new Error("missing"), { code: "ENOENT" });
   });
-  t.mock.method(fs, "mkdir", async () => undefined);
-  t.mock.method(fs, "writeFile", async (path: unknown, content: unknown) => {
-    assert.ok(String(path).endsWith("auto-mode-for-paseo.local.json")); current = String(content);
-  });
+  mockSettingsWrites(t, (text) => { current = text; });
   const loaded = await loadSettings();
   assert.equal(loaded.classifier, "jev");
   assert.equal(loaded.autoCodexModelStaff, "custom-model");
@@ -107,4 +198,29 @@ test("invalid new settings do not silently fall back to the old file", async (t)
   const read = t.mock.method(fs, "readFile", async () => "not JSON");
   await assert.rejects(loadSettings(), /Could not read/);
   assert.equal(read.mock.callCount(), 1);
+});
+
+test("overlapping settings clients preserve a newly saved key and receive their own save results", async (t) => {
+  let stored = JSON.stringify({ ...defaults, apiKey: "test-key-old" });
+  let commits = 0;
+  let started!: () => void;
+  const firstCommit = new Promise<void>((resolve) => { started = resolve; });
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const read = t.mock.method(fs, "readFile", async () => stored);
+  mockSettingsWrites(t, async (text) => {
+    if (++commits === 1) { started(); await gate; }
+    stored = text;
+  });
+  const first = saveSettings({ ...defaults, apiKey: "test-key-new", model: "jev-test-a" });
+  await firstCommit;
+  const second = saveSettings({ ...defaults, apiKey: "", model: "jev-test-b" });
+  try {
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(read.mock.callCount(), 1);
+  } finally { release(); }
+  const saved = await Promise.all([first, second]);
+  assert.deepEqual(saved.map((value) => value.model), ["jev-test-a", "jev-test-b"]);
+  assert.equal((await loadSettings()).apiKey, "test-key-new");
+  assert.equal((await loadSettings()).model, "jev-test-b");
 });

@@ -5,15 +5,18 @@ Use this file for automated changes in this repository.
 ## Scope
 
 Keep the plugin focused on one job. It classifies a new Paseo message and starts
-a Codex turn with explicit settings. Do not add an HTTP server, an MCP server,
+a configured persona's provider turn with explicit settings. Do not add an HTTP server, an MCP server,
 or a second session store.
 
 ## Safety rules
 
-- Treat intent as the workspace-access boundary for Auto-review.
+- Keep intent and Plan separate. Intent alone must not enable planning mode.
+- Use no-edit instructions for native discussion and review under automatic approvals.
 - Stop the turn when the intent is missing or invalid.
 - Do not let a classifier select Full access.
-- Keep Plan read-only.
+- Use the native planning mode for Plan. Keep Codex Plan read-only.
+- If no planning mode exists, use normal approvals and no-edit instructions.
+- Report that fallback. Do not claim it enforces a read-only sandbox.
 - Do not save Full access in provider persistence.
 - Do not send tool output, private reasoning, credentials, or full chat history
   to a classifier.

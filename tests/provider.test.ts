@@ -10,7 +10,7 @@ import {
   MAX_IMAGES_PER_MESSAGE,
 } from "../server/provider";
 import { defaults } from "../shared/settings";
-import { answers } from "./fixtures";
+import { answers, wireAnswers } from "./fixtures";
 
 test("provider routes new turns in one thread and preserves steer, permissions, interruption, and restoration", async (t) => {
   const settings = {
@@ -20,6 +20,8 @@ test("provider routes new turns in one thread and preserves steer, permissions, 
     autoCodexModelReview: "review-model",
     autoCodexEffortCheap: "low",
     autoCodexEffortReview: "high",
+    personas: defaults.personas.map((persona) => persona.id === "reporter" ? { ...persona, model: "mechanical-model", effort: "low" }
+      : persona.id === "critic" ? { ...persona, model: "review-model", effort: "high" } : persona),
   };
   t.mock.method(fs, "readFile", async () => JSON.stringify(settings));
   let classifications = 0;
@@ -27,16 +29,17 @@ test("provider routes new turns in one thread and preserves steer, permissions, 
   t.mock.method(globalThis, "fetch", async (_input: unknown, init?: RequestInit) => {
     classifications += 1;
     if (typeof init?.body === "string") classificationBodies.push(init.body);
-    return Response.json({ answers: answers(classifications === 1
+    return Response.json({ answers: wireAnswers(answers(classifications === 1
       ? {
+          taskType: { type: "choice", choice: "report", probabilities: { report: 1 }, confidence: 1 },
           effort: { type: "choice", choice: "low", probabilities: { low: 1 }, confidence: 1 },
-          mechanical_local: { type: "noul", noul: 1 },
+          personaScores: { reporter: 1 },
         }
       : {
           intent: { type: "choice", choice: "review", probabilities: { review: 1 }, confidence: 1 },
-          lane: { type: "choice", choice: "review", probabilities: { review: 1 }, confidence: 1 },
-          independent_review: { type: "noul", noul: 1 },
-        }) });
+
+
+        }), settings.personas) });
   });
 
   let notify: (event: CodexNotification) => void = () => assert.fail("Codex listener not registered");
@@ -86,13 +89,12 @@ test("provider routes new turns in one thread and preserves steer, permissions, 
   assert.ok(catalog);
   assert.deepEqual(
     catalog.catalog.models.map((model) => model.id).slice(0, 5),
-    ["auto-mode-for-paseo", "gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"],
+    ["auto-mode-for-paseo", "tech-lead", "staff", "critic", "reporter"],
   );
   const descriptions = new Map(catalog.catalog.models.map((model) => [model.id, model.description]));
-  assert.match(descriptions.get("gpt-6-astra") ?? "", /Architecture/);
-  assert.match(descriptions.get("gpt-5.6-sol") ?? "", /Complex implementation/);
-  assert.match(descriptions.get("gpt-5.6-terra") ?? "", /Balanced choice/);
-  assert.match(descriptions.get("gpt-5.6-luna") ?? "", /small mechanical tasks/);
+  assert.match(descriptions.get("staff") ?? "", /architecture/i);
+  assert.match(descriptions.get("tech-lead") ?? "", /deliver/i);
+  assert.match(descriptions.get("writer") ?? "", /prose/i);
   const config = { cwd: process.cwd(), env: {}, mcpServers: {}, settings: {}, persist: true };
   await connection.send({ type: "session.open", requestId: "open", sessionId: "session-1", history: "skip", config });
   async function sendText(id: string, text: string, delivery: ProviderPrompt["delivery"] = "auto") {
@@ -178,7 +180,7 @@ test("provider rejects images that exceed explicit message limits", async (t) =>
   let classifications = 0;
   t.mock.method(globalThis, "fetch", async () => {
     classifications += 1;
-    return Response.json({ answers: answers() });
+    return Response.json({ answers: wireAnswers() });
   });
 
   const connection = await createAutoModeProvider().connect({

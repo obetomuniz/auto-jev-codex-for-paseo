@@ -1,18 +1,19 @@
 # Auto Mode for Paseo — Jev + Laya model routing
 
 Auto Mode for Paseo is a model router for [Paseo](https://github.com/getpaseo/paseo).
-It uses TypeSafe Jev or local Laya to classify each new message. It then starts a Codex turn
-with the selected model, reasoning effort, work mode, and speed.
+It uses TypeSafe Jev or local Laya to classify each new message. It then selects a
+persona. Each persona has an editable provider, model, reasoning setting, and instructions.
 
-The Codex thread stays the same when the model changes. Paseo continues to own
-the workspace and the chat session.
+The conversation picker contains Auto and persona names. Model names stay in
+the plugin settings. Paseo owns workspaces and native provider authentication.
+Codex is optional when the configured personas use other providers.
 
 ## Requirements
 
 - Paseo 0.8.0 or later with plugins enabled.
 - Node.js 24 and npm.
-- Codex CLI 0.153.4 or a compatible later version.
-- A local Codex CLI login.
+- An installed and authenticated Paseo provider for each enabled persona.
+- For Codex personas only: Codex CLI 0.153.4 or a compatible version, with a local login.
 - For Jev: a TypeSafe API key.
 - For Laya: no separate Python installation is needed on Windows.
 
@@ -46,10 +47,14 @@ No credentials are copied into the project.
 
 Open **Settings > Plugins > Auto Mode for Paseo**.
 Select a classifier. Jev remains the default for existing settings.
+Valid changes save automatically after a short pause in typing.
+Invalid fields show an inline error. Other valid changes can still save.
 
 ### Jev
 
-Select **Jev (TypeSafe API)**. Set the TypeSafe API key.
+Select **Jev (TypeSafe API)**. Enter the TypeSafe API key.
+Click **Save** beside the key to apply it. Click **Cancel** to discard the key edit.
+Other setting changes never submit an unconfirmed key.
 You can also set `TYPESAFE_API_KEY` in the Paseo daemon environment.
 The key and Jev model fields appear only when Jev is selected.
 
@@ -100,61 +105,170 @@ It never sends the request to Jev as a fallback.
 Laya quality for this routing task has not been benchmarked. Its confidence
 score is not a guarantee of correct intent. Evaluate representative requests
 in your language before using it for unattended work.
+Both classifiers can misjudge scope or task depth. Overlapping scopes can be ambiguous.
+Jev is the recommended classifier for Auto persona selection. In local smoke tests
+with the default personas and two custom personas, Jev selected the expected persona
+in 16 of 18 requests and Laya in 14 of 18. Jev tagged 12 of 12 sample scopes
+correctly and Laya 10 of 12.
+Routing tests validate selection rules. They are not an accuracy benchmark.
 See the [Laya limitations](https://github.com/NandhaKishorM/laya#honest-limits).
 
-### Codex models
+### Personas
 
-Set the model for each task category. Empty fields use these defaults:
+Open **Settings > Plugins > Auto Mode for Paseo**.
+Click **Refresh** to load the providers and models available on this daemon.
+Choose a provider for each persona. Select a model from **Available models**.
+Choose a supported reasoning setting. Select **Provider default** to use the model's default.
+Edit the instructions and description. Valid changes save automatically.
+A model release does not require a plugin update.
 
-| Task category | Model | Fallback effort |
+| Persona | Automatic role |
+| --- | --- |
+| Tech Lead | Code delivery, debugging, and implementation validation |
+| Staff | Technical strategy, architecture, and consequential tradeoffs |
+| Critic | Reviews, critiques, and validation of existing work |
+| Reporter | Facts, progress, changes, and open questions |
+| Writer | Prose, documentation, explanations, and user-facing text |
+
+Each persona has its own settings block. You can rename, disable, or remove any
+persona, including the defaults. Complete a new persona's required fields to save it.
+An incomplete new persona stays local while you edit it.
+The initial personas are Tech Lead, Staff, Critic, Reporter, and Writer. They are editable starting points.
+With the initial scopes, "Are these changes good?" fits Critic and "What changed?" fits Reporter.
+No persona name or ID has special routing behavior.
+
+Edit **Scope** to define when Auto should use a persona. Include its responsibility,
+examples, and limits. The full scope stays visible in a multiline field.
+Auto sends the complete scope of each enabled persona to Jev or Laya.
+The limits are 240 characters for each scope and 32 personas. Names and IDs do not influence selection.
+Instructions, model, provider, and reasoning settings do not influence role selection.
+Edit **Instructions** to tell the selected model how to work.
+
+**Used for** assigns each persona to fixed task types: Review, Implement, Design,
+Report, Write, or Other. When you stop editing a Scope, the settings screen asks
+the configured classifier to detect the type. Select types to set them manually.
+Use **Detect from scope** to return to detection. A persona with an edited scope
+and no current detection is untagged and competes for every task type.
+
+Set **Task depth** to the most demanding work the configured setup can handle:
+Light, Standard, Deep, or Expert. Jev/Laya estimates the required depth from the
+request, recent context, and aggregate workspace change counts. A short question
+about a large change can require a deep review. Size alone does not imply difficulty.
+This field is separate from the provider's **Reasoning effort** setting.
+Review task depth when changing a persona's model. The plugin does not infer model capability.
+
+For each message, Jev/Laya also chooses one task type. Auto compares scopes only
+among the personas used for that type and untagged personas. A higher scope score
+cannot send a review to a writing persona. When no persona is used for the type,
+all personas compete and the turn summary reports that. Other never reports it.
+Auto selects the highest scope score among those personas that support the required depth.
+When none supports it, Auto uses the deepest available setup and reports that limit.
+Low scores do not block short or generic messages such as "testing" or "hello".
+Equal scores prefer the lowest sufficient depth, then stable persona ID order.
+If no enabled persona has a scope, Auto asks you to configure one or choose manually.
+Leave a scope empty to make that persona available only for manual selection.
+Disabled or deleted personas are excluded. Manual selection takes priority.
+Default and custom personas use the same selection rules, including after renaming.
+Previous routing thresholds no longer apply.
+
+Use **Restore** to add deleted defaults back.
+This action keeps your existing personas and their settings.
+Saving settings does not restore deleted personas.
+
+The selected persona supplies its provider, model, effort, work mode, and instructions.
+The classifier still controls intent and automatic Plan and Fast decisions.
+It cannot change the persona's instructions or grant Full access.
+Persona scopes are classification data. They do not authorize edits or enable Plan.
+Each started turn shows one compact notice with the selected persona, model,
+intent, required task depth, mode, and reasoning setting. Any capability fallback appears in that notice.
+Old model and effort settings migrate to the built-in personas on load.
+Existing persona settings take priority after migration.
+The new task-depth field starts from the preset value for existing default personas.
+Other existing personas start at Standard. All values remain editable.
+
+Workspace context contains only counts of changed files, added and removed lines,
+binary files, and untracked files. It covers uncommitted changes against HEAD.
+It does not inspect file contents or measure committed branch changes.
+Filenames, paths, and raw Git output are excluded. Unavailable or empty counts
+do not imply an easy task.
+Laya receives these counts only in a separate task-depth pass.
+Its scope scores come from a pass without them, because the counts reduced scope accuracy.
+
+### Provider support
+
+The model catalog comes from Paseo. Native execution uses Paseo's installed
+providers and existing credentials. Codex uses the existing App Server adapter.
+Settings offer only the models, reasoning levels, and work modes published by
+that provider. Changing the provider clears dependent choices.
+Changing the model clears the reasoning level. Refresh loads new releases.
+Reasoning effort is hidden when the selected model has no reasoning options.
+
+| Provider | Automatic approvals and Plan | Explicit Full access |
 | --- | --- | --- |
-| Difficult architecture or deep system analysis | `gpt-6-astra` | `xhigh` |
-| High-risk or deep cross-component review | `gpt-6-astra` | `xhigh` |
-| Direct question or mechanical task | `gpt-5.6-luna` | `low` |
-| Bounded explanation, plan, review, or implementation | `gpt-5.6-terra` | `medium` |
-| Complex investigation, review, or implementation | `gpt-5.6-sol` | `high` |
+| Codex | Intent-based sandbox and Codex Auto-review | Supported; Plan remains read-only |
+| Claude | Native Auto mode by default; native Plan when Plan is enabled | Native bypass mode; Plan takes priority |
+| OpenCode | Published work and planning modes | Native permission options; Plan takes priority |
+| Other installed providers | Published modes, or the provider's defaults when modes are unavailable | Published bypass mode when supported; otherwise normal approvals |
 
-The task category selects the model. Intent controls workspace access separately.
-Discussion and review do not automatically select Astra. A direct question can use
-Luna. A bounded explanation or small review can use Terra. A complex review can
-use Sol. Difficult architecture and high-risk reviews use the configured Astra categories.
-For Auto-review, discussion and review stay read-only with every model.
-Reasoning effort is selected separately. Saved model choices remain in effect.
-The classifier can still underestimate or overestimate a task. Check the routing
-notice in the chat. Select a model manually when the category is unsuitable.
+The persona's **Work mode** can override the automatic work-mode choice.
+It lists ordinary work modes. Plan and bypass are controlled by the conversation.
+The field is hidden when the provider publishes no work modes.
+Codex offers Default Permissions and Auto-review. Its Automatic choice uses Auto-review.
+Default Permissions sends approval requests to the user. Intent still limits the sandbox.
+Discussion and review do not enable Plan by themselves.
+With Plan off, native providers use the persona's work mode.
+Under automatic approvals, discussion and review receive no-edit instructions.
+These modes retain each provider's own permission semantics.
+They do not imply a shared operating-system sandbox.
+When Plan is requested but unsupported, the plugin uses normal approvals and instructions
+to analyze without edits. The turn notice explains this limitation.
+Native provider options are documented in [Paseo provider options](https://paseo.sh/docs/sdk/provider-options).
+Unknown models stop the turn and direct you to the persona settings.
+An unavailable reasoning setting uses the model default.
+Fast uses the model's published Fast feature when supported.
+Otherwise, execution continues at normal speed. The turn notice explains these fallbacks.
 
-Select **Auto Mode for Paseo** in a Paseo chat. Then send a text message.
-You can also select Astra, Sol, Terra, or Luna manually. The classifier still chooses
-the effort for manual models.
+Each non-Codex turn starts a native Paseo agent. It is archived after completion
+or cancellation. Its full timeline remains in Paseo. No second session store is added.
+The next run receives up to 24 conversational messages, at most 8,000 characters
+each. This handoff excludes tool output, reasoning, and previous image data.
+A resumed non-Codex chat replays this bounded conversational history.
+Only the smaller six-message context goes to the classifier.
+Codex-to-Codex turns keep their existing native thread.
+A switch back to Codex includes the bounded conversation handoff.
 
 ## Composer controls
 
-The model control has an Auto option and the configured model IDs. A manual
-model applies to the next successful turn by default. Select **Keep selected
-model** to use it for later turns.
+Select **Auto Mode for Paseo** as the provider. Select Auto or a persona in the
+conversation. A manual persona applies to the next successful turn by default.
+Select **Keep selected persona** to use it for later turns.
 
 The mode control has three options:
 
-- **Auto** starts with Plan off. The classifier can enable Plan for a planning task.
-- **Work** keeps Plan off.
-- **Plan** keeps Plan on and uses a read-only sandbox.
+- **Auto (plan or work)** lets the classifier choose whether this turn needs Plan.
+- **Work on request** answers, reviews, or implements with automatic Plan disabled.
+- **Plan only** requests analysis without edits and uses the provider's planning mode when available.
+
+The mode icons identify automatic choice, work, and planning.
+Modes do not select a persona or grant Full access. Use the separate controls for those choices.
 
 The Fast control has three options:
 
 - **Auto** starts with Fast off. The classifier can enable Fast for an urgent task.
-- **On** requests the `fast` service tier.
-- **Off** requests the standard service tier.
+- **On** requests faster processing when the model supports it.
+- **Off** uses normal speed.
 
-Fast availability and quota use depend on the Codex account.
+Fast availability and quota use depend on the provider and model.
 
-The default permission setting is **Auto-review**. It uses the `on-request`
-approval policy and the `auto_review` reviewer. The classifier cannot enable Full access.
-Only an explicit user selection can enable Full access. Plan stays read-only
+The default permission setting is **Automatic approvals**. Codex uses the `on-request`
+approval policy and the `auto_review` reviewer. Other providers follow the support table. The classifier cannot enable Full access.
+Only an explicit user selection can enable Full access. Plan takes priority
 when Full access is selected. The plugin does not restore Full access when a
 session reopens.
 
-A setting change during a turn applies to the next turn. A steering message
-keeps the current model, speed, mode, and permissions.
+A setting change during a turn applies to the next turn. Codex steering keeps
+the current settings. Native provider runs do not support forced steering through
+this SDK. Wait for them to finish or interrupt them before sending another message.
 
 ## Data and security
 
@@ -176,25 +290,27 @@ the client. An empty key field keeps the saved key.
 
 Laya requests have a 16,000-character message limit and a 64 KiB JSON limit.
 At most eight classifications can wait or run at once. They run in order.
-The worker rejects any supplied state or fixed question that would be truncated
+The worker rejects any supplied state or question that would be truncated
 by the model. Default model limits are 512 tokens for English and 1,024 for the
 other checkpoints, including questions. Long messages or recent context can
 therefore stop a turn. Shorten the message or start a chat with less context.
 The plugin does not send images, tool results, or credentials to Laya.
 
-Codex authentication stays in the local Codex CLI. The plugin does not receive
-an OpenAI API key.
+Provider authentication stays in Paseo and the installed provider CLI.
+The plugin does not request vendor API keys.
 
-For Auto-review, discussion and review turns use a read-only sandbox. An
-explicit implementation request uses workspace-write access for the current
-Paseo workspace. Unknown intent values and invalid scores stop the turn.
+With automatic approvals, discussion and review request analysis without edits.
+Plan is a separate decision. Native execution uses the persona's work mode when
+Plan is off. Codex enforces intent through its sandbox. Other providers enforce
+their native permissions as described above. No-edit instructions do not add a sandbox.
+Unknown intent values and invalid scores stop the turn.
 
 The provider supports text, images, streamed responses, Plan questions,
 approvals, interrupts, steering, and history replay. It does not support
 composer commands.
 
 Paseo renders the image preview in its native composer. Auto Mode for Paseo sends
-the image to Codex with the message. It sends only the message text to
+the image to the selected provider with the message. It sends only the message text to
 the selected classifier for routing.
 
 Attach up to four PNG, JPEG, WebP, or GIF images in one message. Each image
@@ -208,7 +324,7 @@ Run all checks:
 npm run check
 ```
 
-The tests use simulated TypeSafe, Laya, and Codex services. They do not need
+The tests use simulated TypeSafe, Laya, Codex, and native Paseo provider services. They do not need
 credentials, model downloads, or a running Paseo daemon.
 Python bridge tests use a fake Laya module and need Python 3.10 or later.
 Set `LAYA_TEST_PYTHON` if the executable is not named `python`.
@@ -231,7 +347,8 @@ git remote set-url origin git@github.com:obetomuniz/auto-mode-for-paseo.git
 
 Finish active turns. Disable the old plugin in Paseo.
 Install this checkout with `paseo plugin install .`.
-Open the new plugin settings. Verify the imported values. Save the settings.
+Open the new plugin settings. Verify the imported values.
+Edit a setting to write the migrated configuration automatically.
 Select **Auto Mode for Paseo** for new chats.
 
 If the new settings file is absent, the plugin reads

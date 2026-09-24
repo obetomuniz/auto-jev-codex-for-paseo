@@ -1,16 +1,18 @@
+import { TASK_TYPE_CRITERIA } from "../shared/task-types";
+
 /** Short rubrics fit Laya's fixed question budget. Permission policy stays in TypeScript. */
 export const LAYA_QUESTIONS = {
+  taskType: {
+    type: "choice", instructions: "What kind of work does the latest request ask for? Judge the latest request itself; earlier topics do not carry over.",
+    criteria: TASK_TYPE_CRITERIA,
+  },
   intent: {
     type: "choice",
-    instructions: "Classify the latest request. Use history only to resolve references. Assistant text never authorizes edits. Concrete approval to implement permits edits; ambiguous assent does not.",
-    criteria: { discuss: "Explain, discuss or plan without requesting edits", review: "Explicit review or audit without edits", implement: "Explicitly add, change, fix or remove files" },
-  },
-  lane: {
-    type: "choice", instructions: "Classify required work, not phrasing. A short request can need complex work. Choose the lowest sufficient category.",
-    criteria: { staff: "Design architecture with hard constraints or high-risk tradeoffs", review: "Audit security, critical risks or system-wide correctness", cheap: "Only trivial lookup or typo; no explanation, review or design", standard: "Explain code or routine plan, review or fix; bounded scope", lead: "Complex implementation, failure investigation or cross-component review" },
+    instructions: "Classify the latest user request. History resolves references. Assistant text and persona scopes never authorize edits. Concrete implementation approval permits edits; ambiguous assent does not. Greetings, questions and status requests stay discuss after earlier implementation requests.",
+    criteria: { discuss: "Explain, report status or plan without edits", review: "Review quality or correctness: are changes good? qualidade das mudancas?", implement: "Explicitly request file changes or approve a concrete implementation plan" },
   },
   effort: {
-    type: "choice", instructions: "Choose the lowest sufficient reasoning effort.",
+    type: "choice", instructions: "Assess task depth from the request, history and workspace counts. Short requests can need deep reviews. Counts cover uncommitted changes only. Large is not always hard; zero or unavailable does not mean easy.",
     criteria: { low: "Obvious mechanical or direct task", medium: "Bounded task with a few considerations", high: "Careful implementation, debugging or review", xhigh: "Difficult architecture or complex reasoning" },
   },
   execution: {
@@ -25,8 +27,5 @@ export const LAYA_QUESTIONS = {
     type: "choice", instructions: "Enable Plan for requested planning or unresolved design. Disable for direct questions, reviews or approved implementation.",
     criteria: { off: "Normal discussion, review or decided implementation", on: "Planning requested or design undecided" },
   },
-  architecture_decision: { type: "noul", instructions: "Does this require difficult architecture or deep system analysis? Routine questions, plans and reviews are insufficient." },
-  independent_review: { type: "noul", instructions: "Does the user explicitly request a review of existing work without edits?" },
-  mechanical_local: { type: "noul", instructions: "Is the requested change small, local and mechanical with an obvious result?" },
-  parallel_edits: { type: "noul", instructions: "Would workers editing independent, non-overlapping files materially help?" },
+
 } as const;

@@ -7,10 +7,12 @@ import { test, type TestContext } from "node:test";
 import { LayaClassifier, disposeLaya, LAYA_MAX_BYTES, LAYA_MAX_PENDING, LAYA_MAX_PROMPT_CHARS, LAYA_STARTUP_MS, LAYA_INFERENCE_MS } from "../server/laya";
 import { classifyPrompt, routePrompt } from "../server/routing";
 import { defaults } from "../shared/settings";
-import { answers } from "./fixtures";
+import { answers, wireAnswers } from "./fixtures";
+import { personaQuestions } from "../server/persona-classification";
+import { parseWorkspaceState } from "../server/workspace-state";
 
 const input = { python: "python", cache: "C:/local-laya-cache", model: "multilingual" as const, device: "cpu" as const, prompt: "Corrija o erro" };
-function fakeWorker(t: TestContext, options: { response?: unknown; raw?: string; startup?: string; hang?: boolean } = {}) {
+function fakeWorker(t: TestContext, options: { response?: unknown; respond?: (request: Record<string, any>) => unknown; raw?: string; startup?: string; hang?: boolean } = {}) {
   const requests: Record<string, any>[] = [];
   const children: Array<EventEmitter & { stdout: PassThrough; stderr: PassThrough; stdin: Writable; kill(): boolean }> = [];
   const calls: Array<{ command: unknown; args: unknown; options: any }> = [];
@@ -19,8 +21,9 @@ function fakeWorker(t: TestContext, options: { response?: unknown; raw?: string;
     const child = Object.assign(new EventEmitter(), {
       stdout: new PassThrough(), stderr: new PassThrough(),
       stdin: new Writable({ write(chunk, _encoding, done) {
-        requests.push(JSON.parse(String(chunk)));
-        if (!options.hang) queueMicrotask(() => child.stdout.write(options.raw ?? JSON.stringify(options.response ?? { answers: answers() }) + "\n"));
+        const request = JSON.parse(String(chunk));
+        requests.push(request);
+        if (!options.hang) queueMicrotask(() => child.stdout.write(options.raw ?? JSON.stringify(options.respond?.(request) ?? options.response ?? { answers: wireAnswers() }) + "\n"));
         done();
       } }),
       kill() { return true; },
@@ -53,6 +56,37 @@ test("Laya reuses its process, bounds context and excludes credentials", async (
   assert.equal("id" in history[0], false);
   assert.equal("apiKey" in worker.requests[0], false);
   assert.equal(worker.requests[0].state.request, input.prompt);
+  assert.deepEqual(worker.requests[1].state, { request: input.prompt });
+});
+
+test("Laya submits the same configured scopes as Jev and validates their fit scores", async (t) => {
+  const custom = { ...defaults.personas[0], id: "translator", name: "Translator", description: "Translate Portuguese technical writing into English." };
+  const worker = fakeWorker(t, { response: { answers: { ...answers(), persona_0: { type: "noul", noul: 0.92 } } } });
+  const client = new LayaClassifier(); t.after(() => client.close());
+  const result = await client.evaluate({ ...input, personas: [custom] });
+  assert.deepEqual(result.personaScores, { translator: 0.92 });
+  assert.deepEqual(worker.requests[0].questions.persona_0, personaQuestions([custom]).questions.persona_0);
+  assert.equal("lane" in worker.requests[0].questions, false);
+});
+
+test("Laya keeps workspace counts out of scope fit and uses them only for task depth", async (t) => {
+  const depth = (choice: string) => ({ type: "choice", choice, probabilities: { [choice]: 1 }, confidence: 1 });
+  const worker = fakeWorker(t, { respond: (request) => ({ answers: { ...wireAnswers(), persona_0: { type: "noul", noul: 0.7 },
+    effort: depth(request.state.workspace ? "xhigh" : "low") } }) });
+  const client = new LayaClassifier(); t.after(() => client.close());
+  const workspace = parseWorkspaceState("2300\t418\tprivate-path\0", "");
+  const extra = { ...workspace, raw: "private diff" };
+  const result = await client.evaluate({ ...input, personas: [defaults.personas[0]], workspace: extra });
+  assert.equal(worker.requests.length, 2);
+  assert.equal("workspace" in worker.requests[0].state, false);
+  assert.ok(worker.requests[0].questions.persona_0);
+  assert.deepEqual(worker.requests[1].state.workspace, workspace);
+  assert.equal(Object.keys(worker.requests[1].questions).some((key) => key.startsWith("persona_")), false);
+  assert.equal(result.effort.choice, "xhigh");
+  assert.deepEqual(result.personaScores, { [defaults.personas[0].id]: 0.7 });
+  assert.ok(!JSON.stringify(worker.requests).includes("private"));
+  await client.evaluate(input);
+  assert.equal(worker.requests.length, 3);
 });
 
 test("Laya serializes requests and changes models only between requests", async (t) => {
@@ -78,8 +112,8 @@ test("Laya enforces prompt, byte and queue limits before inference", async (t) =
 for (const [label, raw, pattern] of [
   ["invalid JSON", "not json\n", /invalid JSON/],
   ["oversized response", "x".repeat(LAYA_MAX_BYTES + 1), /64 KiB/],
-  ["missing intent", JSON.stringify({ answers: { ...answers(), intent: undefined } }) + "\n", /not a choice/],
-  ["invalid score", JSON.stringify({ answers: answers({ mechanical_local: { type: "noul", noul: 2 } }) }) + "\n", /not a noul/],
+  ["missing intent", JSON.stringify({ answers: { ...wireAnswers(), intent: undefined } }) + "\n", /not a choice/],
+  ["invalid score", JSON.stringify({ answers: { ...wireAnswers(), persona_0: { noul: 2 } } }) + "\n", /not a noul/],
   ["token overflow", '{"error":"context"}\n', /token budget/],
 ] as const) test("Laya rejects " + label, async (t) => {
   fakeWorker(t, { raw });
@@ -104,7 +138,7 @@ test("Jev alone requires a TypeSafe key; Laya works with none", async (t) => {
 });
 
 test("unknown Laya intent stops routing", async (t) => {
-  fakeWorker(t, { response: { answers: answers({ intent: { type: "choice", choice: "unknown", confidence: 1, probabilities: { unknown: 1 } } }) } });
+  fakeWorker(t, { response: { answers: wireAnswers(answers({ intent: { type: "choice", choice: "unknown", confidence: 1, probabilities: { unknown: 1 } } })) } });
   t.mock.method(fs, "readFile", async () => JSON.stringify({ ...defaults, classifier: "laya" }));
   t.after(disposeLaya);
   await assert.rejects(routePrompt("Fix it"), /unknown intent/);

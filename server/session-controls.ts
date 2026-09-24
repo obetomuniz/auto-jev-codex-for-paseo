@@ -1,4 +1,4 @@
-import type { ProviderSessionConfig, ProviderSetting } from "@getpaseo/plugin/server/provider";
+import type { ProviderMode, ProviderSessionConfig, ProviderSetting } from "@getpaseo/plugin/server/provider";
 
 type JsonValue = ProviderSessionConfig["settings"][string];
 
@@ -22,24 +22,24 @@ export function parseControls(input: Readonly<Record<string, JsonValue>>, curren
 
 export function controlSettings(controls: Controls): ProviderSetting[] {
   return [
-    { type: "select", id: "fast", label: "Fast mode", description: "Auto starts off; The classifier may enable it for urgency. Faster processing may use more quota.", value: controls.fast, options: [
+    { type: "select", id: "fast", label: "Fast mode", description: "Auto starts off. The classifier may request it for urgency. Uses the model's Fast option when available; otherwise uses normal speed. Faster processing may use more quota.", value: controls.fast, options: [
       { label: "Auto (classifier decides)", value: "auto" }, { label: "On", value: "on" }, { label: "Off", value: "off" },
     ] },
-    { type: "select", id: "permissions", label: "Permissions", value: controls.permissions, options: [
-      { label: "Auto-review (default)", value: "auto-review" },
+    { type: "select", id: "permissions", label: "Permissions", description: "Uses the persona's native work mode unless Plan is enabled. Full access requests bypass only when you select it.", value: controls.permissions, options: [
+      { label: "Automatic approvals (default)", value: "auto-review" },
       { label: "Full access", value: "full-access" },
     ] },
-    { type: "select", id: "modelScope", label: "Manual model selection", value: controls.modelScope, options: [
+    { type: "select", id: "modelScope", label: "Persona selection", value: controls.modelScope, options: [
       { label: "Next turn only", value: "next-turn" },
-      { label: "Keep selected model", value: "pinned" },
+      { label: "Keep selected persona", value: "pinned" },
     ] },
   ];
 }
 
-export function collaborationModes() {
+export function collaborationModes(): ProviderMode[] {
   return [
-    { id: "auto", label: "Auto", description: "Plan starts off; The classifier may enable it when planning is needed." },
-    { id: "default", label: "Work", description: "Discuss, review, or implement according to your request." },
-    { id: "plan", label: "Plan", description: "Explore and plan without modifying the workspace." },
+    { id: "auto", label: "Auto (plan or work)", icon: "Bot", description: "Let the classifier choose whether to plan or work on this turn. Uses your selected permissions." },
+    { id: "default", label: "Work on request", icon: "Shield", description: "Answer, review, or implement your request without automatically enabling Plan. Uses your selected permissions." },
+    { id: "plan", label: "Plan only", icon: "ShieldEllipsis", description: "Ask the provider to plan without editing. Uses its native planning mode when available." },
   ];
 }
