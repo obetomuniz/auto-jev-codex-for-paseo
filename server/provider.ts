@@ -1,4 +1,3 @@
-import type { JsonValue } from "@getpaseo/protocol/agent-types";
 import {
   negotiateProviderCapabilities,
   type ProviderConnection,
@@ -16,6 +15,8 @@ import { routePrompt, selectCodexModel } from "./routing";
 import { loadSettings } from "./settings-store";
 import { appendContext, readContext, type ContextEntry } from "./route-context";
 import { collaborationModes, controlSettings, parseControls, type Controls } from "./session-controls";
+
+type JsonValue = ProviderSessionConfig["settings"][string];
 
 const PROVIDER_ID = "auto-mode-for-paseo";
 const MODEL_ID = "auto-mode-for-paseo";
