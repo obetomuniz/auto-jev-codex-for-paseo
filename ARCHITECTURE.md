@@ -1,8 +1,8 @@
 # Architecture
 
 Auto Mode for Paseo has one main flow. A user selects the provider in Paseo and
-sends a message. The plugin classifies the message and selects a persona.
-The persona supplies the provider, model, reasoning setting, and instructions.
+sends a message. The plugin classifies the message and selects a preset.
+The preset supplies the provider, model, reasoning setting, and instructions.
 
 ## Modules
 
@@ -25,7 +25,7 @@ server/
   routing.ts              Map a classifier result to turn options
   route-context.ts        Limit recent conversation context
   workspace-state.ts      Collect bounded Git change counters
-  scope-types.ts          Tag one persona scope with a fixed task type
+  scope-types.ts          Tag one preset scope with a fixed task type
   session-controls.ts     Validate composer controls
   classifier.ts           Define shared decisions and validate answers
   jev.ts                  Call TypeSafe
@@ -55,23 +55,23 @@ The provider takes these steps for each new turn:
 3. Read aggregate counts of uncommitted Git changes.
 4. Send the new message, bounded context, and counters to the selected classifier.
 5. Validate all classifier values, including the task type and required task depth.
-6. Keep personas used for the task type, plus untagged personas.
+6. Keep presets used for the task type, plus untagged presets.
 7. Select the best scope match among them with sufficient task depth.
-8. Apply a manual persona selection and explicit user controls.
+8. Apply a manual preset selection and explicit user controls.
 9. Start the configured provider with its supported execution controls.
 
 The context can contain user messages, assistant answers, and plans. It cannot
 contain tool output or private reasoning. The classifier uses the context only to
 resolve references such as "continue" or "implement the plan."
 
-## Intent and persona rules
+## Intent and preset rules
 
 Intent controls execution behavior when automatic approvals are selected.
 The allowed intent values are `discuss`, `review`, and `implement`.
 
 - `discuss` requests analysis without edits.
 - `review` requests analysis without edits.
-- `implement` uses the persona's work mode.
+- `implement` uses the preset's work mode.
 
 Codex maps these intents to read-only or workspace-write sandboxes.
 Native providers use their published modes and their own permission semantics.
@@ -79,13 +79,13 @@ Discussion and review add no-edit instructions under automatic approvals.
 Intent does not enable Plan. The effective Plan setting selects the planning mode.
 
 An unknown intent stops the turn. It never enables write access.
-Persona selection uses the same rules for every enabled persona.
-Default personas are editable presets. Their IDs have no routing privileges.
+Preset selection uses the same rules for every enabled preset.
+Default presets are editable. Their IDs have no routing privileges.
 Task depth describes the most demanding work a configured setup can handle.
 It is separate from the provider's reasoning setting. The classifier assesses
 required depth from the request, recent context, and aggregate change counts.
 Among sufficient setups, the highest scope score wins. Ties favor the lowest
-sufficient depth, then the persona ID. When none is sufficient, Auto uses the
+sufficient depth, then the preset ID. When none is sufficient, Auto uses the
 deepest available setup and reports that limit in the single turn summary.
 Manual selection takes priority over this capacity filter.
 Laya runs two passes when counts exist: scope fit and intent without counts, then
@@ -98,52 +98,52 @@ Each of two parallel probes has a 1.5-second timeout and a 256-KiB output limit.
 Each counter is capped at 1,000,000. A flag reports capped counts.
 Failures yield an unavailable state. Missing or zero counts do not mean low depth.
 No filenames, patches, command output, or repository paths reach the classifier.
-Each persona supplies a complete Scope, stored in the description field.
+Each preset supplies a complete Scope, stored in the description field.
 Scopes allow up to 240 characters. Names and IDs are not sent to the classifier.
-Blank scopes are manual-only. Disabled or deleted personas are excluded.
+Blank scopes are manual-only. Disabled or deleted presets are excluded.
 Initial scopes describe common engineering responsibilities.
 They are stored in settings, not in a fixed classifier role rubric.
 
-The classifier receives one fit question per eligible persona in the same request.
+The classifier receives one fit question per eligible preset in the same request.
 There are at most 32 fit questions. Execution instructions, provider, model, effort,
 work mode, credentials, and other settings are excluded from these definitions.
 Each expected answer must contain a numeric score from 0 to 1.
 Missing or invalid scores stop the turn. Unexpected answer IDs are ignored.
-The fixed task-type answer bounds free-text scope scores. Only personas used for that
-type, plus untagged personas, compete. Without such a persona, all compete and the
-summary reports the fallback, except for Other. Local tests showed that per-persona
+The fixed task-type answer bounds free-text scope scores. Only presets used for that
+type, plus untagged presets, compete. Without such a preset, all compete and the
+summary reports the fallback, except for Other. Local tests showed that per-preset
 fit scores alone misrouted broad roles, especially with Laya.
 The highest valid score in the type- and capacity-filtered set wins, even when scores are low or zero.
-No enabled persona with a scope stops the turn with guidance.
+No enabled preset with a scope stops the turn with guidance.
 Manual selection skips fit questions. Intent, Plan, and Fast are still classified.
-Persona scopes never authorize edits. Intent remains the access boundary.
-The selected persona supplies the provider, model, instructions, and effort.
+Preset scopes never authorize edits. Intent remains the access boundary.
+The selected preset supplies the provider, model, instructions, and effort.
 The classifier's effort answer selects the required task depth.
 The execution-shape answer remains advisory.
 
 The obsolete lane mapping, routing thresholds, and automatic flag are removed.
-Existing model overrides still migrate to persona settings. A one-time scope migration
-updates untouched preset descriptions. Edited scopes and provider setups stay intact.
+Existing model overrides still migrate to preset settings. A one-time scope migration
+updates untouched default descriptions. Edited scopes and provider setups stay intact.
 Each scope question must fit Laya's existing token budget without truncation.
 
-Task types are stored per persona with a detected-or-manual flag and the scope
+Task types are stored per preset with a detected-or-manual flag and the scope
 text they were detected from. Detected tags apply only while that scope is
 unchanged. The settings screen detects them through a plugin RPC after an 800 ms
 pause. The RPC sends only the scope, at most 240 characters, and one fixed
 choice question to the configured classifier. Each scope text is sent once until
 the user retries. Results for a scope that has since changed are dropped.
-Manual tags require at least one type. Preset scopes seed their tags on migration.
+Manual tags require at least one type. Default scopes seed their tags on migration.
 These definitions do not start skills or worker agents.
 
-After startup succeeds, emit one execution notice with the applied persona,
+After startup succeeds, emit one execution notice with the applied preset,
 provider, model, intent, mode, and reasoning setting. Include capability fallback
 messages in that notice. Do not emit a separate classification notice.
 
 ## Composer controls
 
-The model list contains Auto and enabled persona IDs. A manual persona is
+The model list contains Auto and enabled preset IDs. A manual preset is
 valid for one successful turn or until the user removes a pin. A failed turn
-does not consume a one-turn persona selection.
+does not consume a one-turn preset selection.
 
 Fast and Plan are separate classifier decisions. Both start off for each turn. The classifier
 must return a positive decision to enable one. A manual On, Off, Work, or Plan
@@ -153,7 +153,7 @@ Each Codex turn sends `serviceTier`, `collaborationMode`, `approvalPolicy`,
 `approvalsReviewer`, and a sandbox policy. Thus, a turn does not inherit a Fast,
 Plan, or Full access state by mistake.
 
-Codex Auto-review uses `on-request` with `auto_review`. A persona can select
+Codex Auto-review uses `on-request` with `auto_review`. A preset can select
 Default Permissions to use `on-request` with the `user` reviewer instead.
 Each turn sends the reviewer explicitly, including switches within one thread.
 The settings field is hidden for providers with no published work modes.
@@ -213,7 +213,7 @@ Settings discover models, reasoning levels, and modes through the host SDK.
 Only published values appear in their selectors. The work-mode selector excludes
 planning and bypass modes. Provider changes clear dependent selections.
 Native execution rechecks optional capabilities before each run.
-Use the persona's work mode, a known automatic or approval mode, or native defaults.
+Use the preset's work mode, a known automatic or approval mode, or native defaults.
 When Plan is enabled, use a published planning mode when available.
 If Plan is requested but unsupported, use normal approvals and no-edit instructions with a visible notice.
 With Plan off, use the work mode even for discussion and review.

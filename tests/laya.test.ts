@@ -8,7 +8,7 @@ import { LayaClassifier, disposeLaya, LAYA_MAX_BYTES, LAYA_MAX_PENDING, LAYA_MAX
 import { classifyPrompt, routePrompt } from "../server/routing";
 import { defaults } from "../shared/settings";
 import { answers, wireAnswers } from "./fixtures";
-import { personaQuestions } from "../server/persona-classification";
+import { presetQuestions } from "../server/preset-classification";
 import { parseWorkspaceState } from "../server/workspace-state";
 
 const input = { python: "python", cache: "C:/local-laya-cache", model: "multilingual" as const, device: "cpu" as const, prompt: "Corrija o erro" };
@@ -60,30 +60,30 @@ test("Laya reuses its process, bounds context and excludes credentials", async (
 });
 
 test("Laya submits the same configured scopes as Jev and validates their fit scores", async (t) => {
-  const custom = { ...defaults.personas[0], id: "translator", name: "Translator", description: "Translate Portuguese technical writing into English." };
-  const worker = fakeWorker(t, { response: { answers: { ...answers(), persona_0: { type: "noul", noul: 0.92 } } } });
+  const custom = { ...defaults.presets[0], id: "translator", name: "Translator", description: "Translate Portuguese technical writing into English." };
+  const worker = fakeWorker(t, { response: { answers: { ...answers(), preset_0: { type: "noul", noul: 0.92 } } } });
   const client = new LayaClassifier(); t.after(() => client.close());
-  const result = await client.evaluate({ ...input, personas: [custom] });
-  assert.deepEqual(result.personaScores, { translator: 0.92 });
-  assert.deepEqual(worker.requests[0].questions.persona_0, personaQuestions([custom]).questions.persona_0);
+  const result = await client.evaluate({ ...input, presets: [custom] });
+  assert.deepEqual(result.presetScores, { translator: 0.92 });
+  assert.deepEqual(worker.requests[0].questions.preset_0, presetQuestions([custom]).questions.preset_0);
   assert.equal("lane" in worker.requests[0].questions, false);
 });
 
 test("Laya keeps workspace counts out of scope fit and uses them only for task depth", async (t) => {
   const depth = (choice: string) => ({ type: "choice", choice, probabilities: { [choice]: 1 }, confidence: 1 });
-  const worker = fakeWorker(t, { respond: (request) => ({ answers: { ...wireAnswers(), persona_0: { type: "noul", noul: 0.7 },
+  const worker = fakeWorker(t, { respond: (request) => ({ answers: { ...wireAnswers(), preset_0: { type: "noul", noul: 0.7 },
     effort: depth(request.state.workspace ? "xhigh" : "low") } }) });
   const client = new LayaClassifier(); t.after(() => client.close());
   const workspace = parseWorkspaceState("2300\t418\tprivate-path\0", "");
   const extra = { ...workspace, raw: "private diff" };
-  const result = await client.evaluate({ ...input, personas: [defaults.personas[0]], workspace: extra });
+  const result = await client.evaluate({ ...input, presets: [defaults.presets[0]], workspace: extra });
   assert.equal(worker.requests.length, 2);
   assert.equal("workspace" in worker.requests[0].state, false);
-  assert.ok(worker.requests[0].questions.persona_0);
+  assert.ok(worker.requests[0].questions.preset_0);
   assert.deepEqual(worker.requests[1].state.workspace, workspace);
-  assert.equal(Object.keys(worker.requests[1].questions).some((key) => key.startsWith("persona_")), false);
+  assert.equal(Object.keys(worker.requests[1].questions).some((key) => key.startsWith("preset_")), false);
   assert.equal(result.effort.choice, "xhigh");
-  assert.deepEqual(result.personaScores, { [defaults.personas[0].id]: 0.7 });
+  assert.deepEqual(result.presetScores, { [defaults.presets[0].id]: 0.7 });
   assert.ok(!JSON.stringify(worker.requests).includes("private"));
   await client.evaluate(input);
   assert.equal(worker.requests.length, 3);
@@ -113,7 +113,7 @@ for (const [label, raw, pattern] of [
   ["invalid JSON", "not json\n", /invalid JSON/],
   ["oversized response", "x".repeat(LAYA_MAX_BYTES + 1), /64 KiB/],
   ["missing intent", JSON.stringify({ answers: { ...wireAnswers(), intent: undefined } }) + "\n", /not a choice/],
-  ["invalid score", JSON.stringify({ answers: { ...wireAnswers(), persona_0: { noul: 2 } } }) + "\n", /not a noul/],
+  ["invalid score", JSON.stringify({ answers: { ...wireAnswers(), preset_0: { noul: 2 } } }) + "\n", /not a noul/],
   ["token overflow", '{"error":"context"}\n', /token budget/],
 ] as const) test("Laya rejects " + label, async (t) => {
   fakeWorker(t, { raw });

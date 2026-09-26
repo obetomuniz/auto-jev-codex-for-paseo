@@ -1,6 +1,6 @@
 import type { RouteAnswers } from "../server/classifier";
-import { defaults, type Persona } from "../shared/settings";
-import { personaQuestions } from "../server/persona-classification";
+import { defaults, type Preset } from "../shared/settings";
+import { presetQuestions } from "../server/preset-classification";
 
 export function answers(overrides: Partial<RouteAnswers> = {}): RouteAnswers {
   const review = overrides.intent?.choice === "review";
@@ -9,12 +9,12 @@ export function answers(overrides: Partial<RouteAnswers> = {}): RouteAnswers {
     intent: { type: "choice", choice: "implement", probabilities: { implement: 1 }, confidence: 1 },
     effort: { type: "choice", choice: "high", probabilities: { high: 1 }, confidence: 1 },
     execution: { type: "choice", choice: "single-model", probabilities: { "single-model": 1 }, confidence: 1 },
-    personaScores: Object.fromEntries(defaults.personas.map((persona) => [persona.id, persona.id === (overrides.intent?.choice === "review" ? "critic" : "tech-lead") ? 0.95 : 0.05])),
+    presetScores: Object.fromEntries(defaults.presets.map((preset) => [preset.id, preset.id === (overrides.intent?.choice === "review" ? "critic" : "tech-lead") ? 0.95 : 0.05])),
     ...overrides,
   };
 }
 
-export function wireAnswers(result = answers(), personas: readonly Persona[] = defaults.personas) {
-  const { personaScores, ...rest } = result;
-  return { ...rest, ...Object.fromEntries(personaQuestions(personas).ids.map((id, index) => [`persona_${index}`, { type: "noul", noul: personaScores?.[id] ?? 0 }])) };
+export function wireAnswers(result = answers(), presets: readonly Preset[] = defaults.presets) {
+  const { presetScores, ...rest } = result;
+  return { ...rest, ...Object.fromEntries(presetQuestions(presets).ids.map((id, index) => [`preset_${index}`, { type: "noul", noul: presetScores?.[id] ?? 0 }])) };
 }

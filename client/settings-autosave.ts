@@ -1,20 +1,20 @@
 import { settingsSchema, type ProviderSettings, type PublicSettings } from "../shared/settings";
 
-// Keep an incomplete persona local until its provider and model form a valid pair.
-// Other fields and personas can still save. API keys never enter an automatic save.
+// Keep an incomplete preset local until its provider and model form a valid pair.
+// Other fields and presets can still save. API keys never enter an automatic save.
 export function settingsForAutosave(draft: PublicSettings, previous: ProviderSettings): ProviderSettings {
   const candidate = { ...draft, apiKey: "" };
   const result = settingsSchema.safeParse(candidate);
   if (result.success) return result.data;
-  const invalidPersonas = new Set<number>();
+  const invalidPresets = new Set<number>();
   for (const issue of result.error.issues) {
     const field = issue.path[0] as keyof ProviderSettings;
-    if (field === "personas" && typeof issue.path[1] === "number") invalidPersonas.add(issue.path[1]);
+    if (field === "presets" && typeof issue.path[1] === "number") invalidPresets.add(issue.path[1]);
     else if (field in previous) Object.assign(candidate, { [field]: previous[field] });
   }
-  candidate.personas = candidate.personas.flatMap((persona, index) => {
-    if (!invalidPersonas.has(index)) return [persona];
-    const saved = previous.personas.find((item) => item.id === persona.id);
+  candidate.presets = candidate.presets.flatMap((preset, index) => {
+    if (!invalidPresets.has(index)) return [preset];
+    const saved = previous.presets.find((item) => item.id === preset.id);
     return saved ? [saved] : [];
   });
   return settingsSchema.parse(candidate);

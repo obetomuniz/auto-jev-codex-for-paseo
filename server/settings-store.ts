@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile, rename, rm } from "node:fs/promises";
 import { z } from "zod";
 import { defaults, settingsSchema, toPublic, type ProviderSettings } from "../shared/settings";
-import { LEGACY_PERSONA_FIELDS } from "../shared/personas";
+import { LEGACY_PRESET_FIELDS } from "../shared/presets";
 
 const SETTINGS_PATH = join(homedir(), ".paseo", "auto-mode-for-paseo.local.json");
 
@@ -22,13 +22,13 @@ const legacyFallbacksSchema = z.object({
 export function parseStoredSettings(value: unknown): ProviderSettings {
   let settings = settingsSchema.parse(value);
   // Seed the new routing field once. Never infer it from a vendor's reasoning setting.
-  const original = z.object({ personas: z.array(z.object({ id: z.string(), taskDepth: z.unknown().optional(), taskTypes: z.unknown().optional() })).optional() }).parse(value);
-  settings.personas = settings.personas.map((persona) => {
-    const stored = original.personas?.find((item) => item.id === persona.id);
+  const original = z.object({ presets: z.array(z.object({ id: z.string(), taskDepth: z.unknown().optional(), taskTypes: z.unknown().optional() })).optional() }).parse(value);
+  settings.presets = settings.presets.map((preset) => {
+    const stored = original.presets?.find((item) => item.id === preset.id);
     if (stored && stored.taskDepth === undefined) {
-      return { ...persona, taskDepth: defaults.personas.find((preset) => preset.id === persona.id)?.taskDepth ?? "medium" };
+      return { ...preset, taskDepth: defaults.presets.find((item) => item.id === preset.id)?.taskDepth ?? "medium" };
     }
-    return persona;
+    return preset;
   });
   const legacy = legacyFallbacksSchema.parse(value);
   if (legacy.fallbackStaff !== undefined || legacy.fallbackReview !== undefined) {
@@ -42,13 +42,13 @@ export function parseStoredSettings(value: unknown): ProviderSettings {
       autoCodexModelLead: settings.autoCodexModelLead.trim() || staff || review || defaults.autoCodexModelStaff,
     };
   }
-  if (typeof value === "object" && value !== null && !("personas" in value)) {
-    settings.personas = settings.personas.map((persona) => {
-      const [model, effort] = LEGACY_PERSONA_FIELDS[persona.id as keyof typeof LEGACY_PERSONA_FIELDS];
-      return { ...persona, model: settings[model].trim() || defaults[model], effort: settings[effort].trim() || defaults[effort] };
+  if (typeof value === "object" && value !== null && !("presets" in value)) {
+    settings.presets = settings.presets.map((preset) => {
+      const [model, effort] = LEGACY_PRESET_FIELDS[preset.id as keyof typeof LEGACY_PRESET_FIELDS];
+      return { ...preset, model: settings[model].trim() || defaults[model], effort: settings[effort].trim() || defaults[effort] };
     });
   }
-  // Upgrade untouched preset descriptions to editable scopes. User definitions stay intact.
+  // Upgrade untouched default descriptions to editable scopes. User definitions stay intact.
   const previousScopes: Record<string, readonly string[]> = {
     "tech-lead": ["Complex implementation and investigation.", "Delivery, code changes, debugging, and implementation validation."],
     staff: ["Architecture and difficult system decisions.", "Technical strategy, architecture, boundaries, and tradeoffs."],
@@ -56,18 +56,18 @@ export function parseStoredSettings(value: unknown): ProviderSettings {
     reporter: ["Direct answers and concise summaries.", "Facts, progress, changes, open questions, and next steps."],
     writer: ["Bounded explanations and routine implementation.", "Prose, documentation, explanations, and user-facing text."],
   };
-  // Seed task types once from a matching preset scope. Other scopes are detected in settings.
-  settings.personas = settings.personas.map((persona) => {
-    const stored = original.personas?.find((item) => item.id === persona.id);
-    const preset = defaults.personas.find((item) => item.description === persona.description);
-    return stored && stored.taskTypes === undefined && preset
-      ? { ...persona, taskTypes: [...preset.taskTypes], taskTypesAuto: true, taskTypesScope: preset.description }
-      : persona;
+  // Seed task types once from a matching default scope. Other scopes are detected in settings.
+  settings.presets = settings.presets.map((preset) => {
+    const stored = original.presets?.find((item) => item.id === preset.id);
+    const builtIn = defaults.presets.find((item) => item.description === preset.description);
+    return stored && stored.taskTypes === undefined && builtIn
+      ? { ...preset, taskTypes: [...builtIn.taskTypes], taskTypesAuto: true, taskTypesScope: builtIn.description }
+      : preset;
   });
-  if (typeof value === "object" && value !== null && !("personaScopeVersion" in value)) {
-    settings.personas = settings.personas.map((persona) => Object.hasOwn(previousScopes, persona.id) && previousScopes[persona.id].includes(persona.description)
-      ? { ...persona, description: defaults.personas.find((preset) => preset.id === persona.id)!.description }
-      : persona);
+  if (typeof value === "object" && value !== null && !("presetScopeVersion" in value)) {
+    settings.presets = settings.presets.map((preset) => Object.hasOwn(previousScopes, preset.id) && previousScopes[preset.id].includes(preset.description)
+      ? { ...preset, description: defaults.presets.find((item) => item.id === preset.id)!.description }
+      : preset);
   }
   return settings;
 }

@@ -20,8 +20,8 @@ test("provider routes new turns in one thread and preserves steer, permissions, 
     autoCodexModelReview: "review-model",
     autoCodexEffortCheap: "low",
     autoCodexEffortReview: "high",
-    personas: defaults.personas.map((persona) => persona.id === "reporter" ? { ...persona, model: "mechanical-model", effort: "low" }
-      : persona.id === "critic" ? { ...persona, model: "review-model", effort: "high" } : persona),
+    presets: defaults.presets.map((preset) => preset.id === "reporter" ? { ...preset, model: "mechanical-model", effort: "low" }
+      : preset.id === "critic" ? { ...preset, model: "review-model", effort: "high" } : preset),
   };
   t.mock.method(fs, "readFile", async () => JSON.stringify(settings));
   let classifications = 0;
@@ -33,13 +33,13 @@ test("provider routes new turns in one thread and preserves steer, permissions, 
       ? {
           taskType: { type: "choice", choice: "report", probabilities: { report: 1 }, confidence: 1 },
           effort: { type: "choice", choice: "low", probabilities: { low: 1 }, confidence: 1 },
-          personaScores: { reporter: 1 },
+          presetScores: { reporter: 1 },
         }
       : {
           intent: { type: "choice", choice: "review", probabilities: { review: 1 }, confidence: 1 },
 
 
-        }), settings.personas) });
+        }), settings.presets) });
   });
 
   let notify: (event: CodexNotification) => void = () => assert.fail("Codex listener not registered");

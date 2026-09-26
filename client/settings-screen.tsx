@@ -15,8 +15,8 @@ import { TASK_DEPTHS, TASK_DEPTH_LABELS } from "../shared/task-depth";
 import { detectTaskTypesRpc, TASK_TYPES, TASK_TYPE_LABELS, type TaskType } from "../shared/task-types";
 import {
   defaults,
-  MAX_PERSONAS,
-  type Persona,
+  MAX_PRESETS,
+  type Preset,
   getSettingsRpc,
   saveSettingsRpc,
   settingsSchema,
@@ -24,14 +24,14 @@ import {
 } from "../shared/settings";
 
 import { getProviderCatalogRpc } from "../shared/provider-catalog";
-import { assignedTaskTypes, missingDefaultPersonas, restoreDefaultPersonas } from "../shared/personas";
+import { assignedTaskTypes, missingDefaultPresets, restoreDefaultPresets } from "../shared/presets";
 import { SettingsAutosave, type SaveState } from "./settings-autosave";
 import { needsDetection, TaskTypeDetector, type DetectionState } from "./task-type-detection";
 import { workModes } from "../shared/provider-modes";
 
 // The host supports flush sections, but the plugin SDK omits this layout prop.
 // Remove the section's page-level bottom margin when it sits inside a card.
-const personaSectionLayout = { flush: true };
+const presetSectionLayout = { flush: true };
 const settingsQueryKey = ["auto-mode-for-paseo", "settings"];
 
 export function SettingsScreen({ theme }: PluginSurfaceProps) {
@@ -87,17 +87,17 @@ export function SettingsScreen({ theme }: PluginSurfaceProps) {
     draftRef.current = next;
     setDraft(next);
     writerRef.current?.update(next);
-    detectorRef.current?.update(next.personas);
+    detectorRef.current?.update(next.presets);
   };
 
   useEffect(() => {
     if (!hydrated) return;
     const detector = new TaskTypeDetector(async (description) => (await detectTypes({ description })).taskTypes,
-      (id, description, taskTypes) => updateDraft((current) => ({ ...current, personas: current.personas.map((persona) =>
-        persona.id === id && needsDetection(persona) && persona.description.trim() === description ? { ...persona, taskTypes, taskTypesScope: description } : persona) })),
+      (id, description, taskTypes) => updateDraft((current) => ({ ...current, presets: current.presets.map((preset) =>
+        preset.id === id && needsDetection(preset) && preset.description.trim() === description ? { ...preset, taskTypes, taskTypesScope: description } : preset) })),
       setDetection);
     detectorRef.current = detector;
-    detector.update(draftRef.current.personas);
+    detector.update(draftRef.current.presets);
     return () => { detector.dispose(); detectorRef.current = null; };
   }, [hydrated]);
   const commitKey = async () => {
@@ -119,9 +119,9 @@ export function SettingsScreen({ theme }: PluginSurfaceProps) {
   const fieldError = (...path: (string | number)[]) => issues.find((issue) =>
     issue.path.length === path.length && issue.path.every((part, index) => part === path[index]),
   )?.message;
-  const missingDefaults = missingDefaultPersonas(draft.personas);
-  const updatePersona = (id: string, values: Partial<Persona>) => updateDraft((current) => ({
-    ...current, personas: current.personas.map((persona) => persona.id === id ? { ...persona, ...values } : persona),
+  const missingDefaults = missingDefaultPresets(draft.presets);
+  const updatePreset = (id: string, values: Partial<Preset>) => updateDraft((current) => ({
+    ...current, presets: current.presets.map((preset) => preset.id === id ? { ...preset, ...values } : preset),
   }));
 
   if (!hydrated) return (
@@ -151,7 +151,7 @@ export function SettingsScreen({ theme }: PluginSurfaceProps) {
         {saveState.saving ? <ActivityIndicator size="small" color={theme.colors.foregroundMuted} /> : null}
         {saveState.error ? <SettingsButton theme={theme} label="Retry" onPress={() => { void writer?.flush(); }} /> : null}
       </View>
-      <SettingsSection title="Classifier" info="Choose how each new message is classified. Jev is more accurate for Auto persona selection. Laya runs locally with lower accuracy. A failure stops the turn. The plugin never switches classifiers automatically.">
+      <SettingsSection title="Classifier" info="Choose how each new message is classified. Jev is more accurate for Auto preset selection. Laya runs locally with lower accuracy. A failure stops the turn. The plugin never switches classifiers automatically.">
         <SettingsCard>
           <SettingsSelect label="Classifier" value={draft.classifier} error={fieldError("classifier")}
             options={[{ label: "Jev (TypeSafe API)", value: "jev" }, { label: "Laya (local, experimental)", value: "laya" }]}
@@ -161,7 +161,7 @@ export function SettingsScreen({ theme }: PluginSurfaceProps) {
       {draft.classifier === "jev" ? (
       <SettingsSection
         title="TypeSafe"
-        info="Each new message and up to six recent user messages, answers, or plans (1,000 characters each) are sent to TypeSafe. Select Auto or a persona in the composer. The key is stored in ~/.paseo/auto-mode-for-paseo.local.json."
+        info="Each new message and up to six recent user messages, answers, or plans (1,000 characters each) are sent to TypeSafe. Select Auto or a preset in the composer. The key is stored in ~/.paseo/auto-mode-for-paseo.local.json."
       >
         <SettingsCard>
           <SettingsRow label="API key" error={keyError}
@@ -209,105 +209,105 @@ export function SettingsScreen({ theme }: PluginSurfaceProps) {
         </SettingsCard>
       </SettingsSection>
       )}
-      <SettingsSection title="Personas"
-        info="A persona defines a responsibility, such as reviewing code or reporting progress. Auto picks the kind of work, then matches scopes and supported task depth among the personas used for it. Instructions tell the selected model how to work. Default and custom personas follow the same rules."
+      <SettingsSection title="Presets"
+        info="A preset defines a responsibility, such as reviewing code or reporting progress. Auto picks the kind of work, then matches scopes and supported task depth among the presets used for it. Instructions tell the selected model how to work. Default and custom presets follow the same rules."
         trailing={
           <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-            <SettingsButton theme={theme} label="Restore" accessibilityLabel="Restore missing default personas"
-              disabled={!ready || !missingDefaults.length || draft.personas.length + missingDefaults.length > MAX_PERSONAS}
-              onPress={() => updateDraft((current) => ({ ...current, personas: restoreDefaultPersonas(current.personas) }))} />
+            <SettingsButton theme={theme} label="Restore" accessibilityLabel="Restore missing default presets"
+              disabled={!ready || !missingDefaults.length || draft.presets.length + missingDefaults.length > MAX_PRESETS}
+              onPress={() => updateDraft((current) => ({ ...current, presets: restoreDefaultPresets(current.presets) }))} />
             <SettingsButton theme={theme} label="Refresh" busy={catalog.isFetching} accessibilityLabel="Refresh available providers and models"
               disabled={catalog.isFetching} onPress={() => { void catalog.refetch(); }} />
           </View>
         }>
         {catalog.error instanceof Error ? <Text style={{ color: theme.colors.statusDanger }}>{catalog.error.message}</Text> : null}
-        {fieldError("personas") ? <Text style={{ color: theme.colors.statusDanger }}>{fieldError("personas")}</Text> : null}
-        {draft.personas.length + missingDefaults.length > MAX_PERSONAS ?
-          <Text style={{ color: theme.colors.foregroundMuted }}>Remove personas to make room before restoring defaults. The limit is {MAX_PERSONAS}.</Text> : null}
-        {!draft.personas.length ? <Text style={{ color: theme.colors.foregroundMuted }}>No personas. Add a persona or restore the defaults to start routing.</Text> : null}
+        {fieldError("presets") ? <Text style={{ color: theme.colors.statusDanger }}>{fieldError("presets")}</Text> : null}
+        {draft.presets.length + missingDefaults.length > MAX_PRESETS ?
+          <Text style={{ color: theme.colors.foregroundMuted }}>Remove presets to make room before restoring defaults. The limit is {MAX_PRESETS}.</Text> : null}
+        {!draft.presets.length ? <Text style={{ color: theme.colors.foregroundMuted }}>No presets. Add a preset or restore the defaults to start routing.</Text> : null}
         <View style={{ gap: 24 }}>
-        {draft.personas.map((persona, index) => {
-            const provider = catalog.data?.find((entry) => entry.id === persona.provider);
-            const model = provider?.models.find((entry) => entry.id === persona.model);
+        {draft.presets.map((preset, index) => {
+            const provider = catalog.data?.find((entry) => entry.id === preset.provider);
+            const model = provider?.models.find((entry) => entry.id === preset.model);
             const modes = workModes(provider?.modes ?? []);
-            const effortAvailable = model?.efforts.some((entry) => entry.id === persona.effort);
+            const effortAvailable = model?.efforts.some((entry) => entry.id === preset.effort);
             const modelHint = catalogLoading ? undefined
               : !catalog.data ? "Refresh to load available models."
               : !provider ? "Select an available provider."
               : !provider.models.length ? "No models available. Check the provider connection and refresh."
-              : persona.model && !model ? "The saved model is unavailable. Choose another model or refresh."
+              : preset.model && !model ? "The saved model is unavailable. Choose another model or refresh."
               : undefined;
             return (
-            <View key={persona.id} style={{ borderWidth: 1, borderColor: theme.colors.border, borderRadius: 12, padding: 16, backgroundColor: theme.colors.surface1 }}>
-            <SettingsSection {...personaSectionLayout} title={persona.name || "Persona"}
-              trailing={<RemovePersonaButton theme={theme} accessibilityLabel="Remove persona" disabled={!ready}
-                onPress={() => updateDraft((current) => ({ ...current, personas: current.personas.filter((item) => item.id !== persona.id) }))} />}>
-            <PersonaFields key={persona.id} theme={theme}>
-              <SettingsInput label="Name" initialValue={persona.name} error={fieldError("personas", index, "name")}
-                onChangeText={(name) => updatePersona(persona.id, { name })} disabled={!ready} />
-              <PersonaScope theme={theme} value={persona.description} error={fieldError("personas", index, "description")}
-                onChangeText={(description) => updatePersona(persona.id, { description })} disabled={!ready} />
-              {persona.description.trim() ? <PersonaTaskTypes theme={theme} persona={persona} state={detection[persona.id]}
-                error={fieldError("personas", index, "taskTypes")} disabled={!ready}
+            <View key={preset.id} style={{ borderWidth: 1, borderColor: theme.colors.border, borderRadius: 12, padding: 16, backgroundColor: theme.colors.surface1 }}>
+            <SettingsSection {...presetSectionLayout} title={preset.name || "Preset"}
+              trailing={<RemovePresetButton theme={theme} accessibilityLabel="Remove preset" disabled={!ready}
+                onPress={() => updateDraft((current) => ({ ...current, presets: current.presets.filter((item) => item.id !== preset.id) }))} />}>
+            <PresetFields key={preset.id} theme={theme}>
+              <SettingsInput label="Name" initialValue={preset.name} error={fieldError("presets", index, "name")}
+                onChangeText={(name) => updatePreset(preset.id, { name })} disabled={!ready} />
+              <PresetScope theme={theme} value={preset.description} error={fieldError("presets", index, "description")}
+                onChangeText={(description) => updatePreset(preset.id, { description })} disabled={!ready} />
+              {preset.description.trim() ? <PresetTaskTypes theme={theme} preset={preset} state={detection[preset.id]}
+                error={fieldError("presets", index, "taskTypes")} disabled={!ready}
                 onToggle={(type) => {
-                  const selected = assignedTaskTypes(persona) ?? [];
-                  updatePersona(persona.id, { taskTypesAuto: false,
+                  const selected = assignedTaskTypes(preset) ?? [];
+                  updatePreset(preset.id, { taskTypesAuto: false,
                     taskTypes: selected.includes(type) ? selected.filter((item) => item !== type) : TASK_TYPES.filter((item) => item === type || selected.includes(item)) });
                 }}
-                onDetect={() => { detectorRef.current?.retry(persona.id); updatePersona(persona.id, { taskTypesAuto: true, taskTypesScope: "" }); }} /> : null}
-              <SettingsSelect label="Task depth" value={persona.taskDepth} error={fieldError("personas", index, "taskDepth")}
+                onDetect={() => { detectorRef.current?.retry(preset.id); updatePreset(preset.id, { taskTypesAuto: true, taskTypesScope: "" }); }} /> : null}
+              <SettingsSelect label="Task depth" value={preset.taskDepth} error={fieldError("presets", index, "taskDepth")}
                 hint="The most demanding work this setup can handle: Light, Standard, Deep or Expert. Auto matches scope among setups that support the required depth. This does not change the model's reasoning setting."
                 options={TASK_DEPTHS.map((value) => ({ value, label: TASK_DEPTH_LABELS[value] }))}
-                onValueChange={(taskDepth) => updatePersona(persona.id, { taskDepth })} disabled={!ready} />
-              <SettingsSelect label="Status" value={persona.enabled ? "enabled" : "disabled"} error={fieldError("personas", index, "enabled")}
+                onValueChange={(taskDepth) => updatePreset(preset.id, { taskDepth })} disabled={!ready} />
+              <SettingsSelect label="Status" value={preset.enabled ? "enabled" : "disabled"} error={fieldError("presets", index, "enabled")}
                 options={[{ label: "Enabled", value: "enabled" }, { label: "Disabled", value: "disabled" }]}
-                onValueChange={(value) => updatePersona(persona.id, { enabled: value === "enabled" })} disabled={!ready} />
-              <SettingsSelect label="Provider" value={catalogLoading || provider ? persona.provider : ""} error={fieldError("personas", index, "provider") ?? provider?.error}
-                options={catalogLoading ? [{ label: "Loading...", value: persona.provider }] : [...(!provider ? [{ label: "Choose a provider", value: "" }] : []),
+                onValueChange={(value) => updatePreset(preset.id, { enabled: value === "enabled" })} disabled={!ready} />
+              <SettingsSelect label="Provider" value={catalogLoading || provider ? preset.provider : ""} error={fieldError("presets", index, "provider") ?? provider?.error}
+                options={catalogLoading ? [{ label: "Loading...", value: preset.provider }] : [...(!provider ? [{ label: "Choose a provider", value: "" }] : []),
                   ...(catalog.data ?? []).map((entry) => ({ label: entry.label, value: entry.id }))]}
                 onValueChange={(value) => {
-                  updatePersona(persona.id, { provider: value, model: "", effort: "", workMode: "" });
+                  updatePreset(preset.id, { provider: value, model: "", effort: "", workMode: "" });
                 }} disabled={!ready || !catalog.data} />
-              <SettingsSelect label="Available models" value={catalogLoading || model ? persona.model : ""} hint={modelHint} error={fieldError("personas", index, "model")}
-                options={catalogLoading ? [{ label: "Loading...", value: persona.model }] : [...(!model ? [{ label: "Choose a model", value: "" }] : []),
+              <SettingsSelect label="Available models" value={catalogLoading || model ? preset.model : ""} hint={modelHint} error={fieldError("presets", index, "model")}
+                options={catalogLoading ? [{ label: "Loading...", value: preset.model }] : [...(!model ? [{ label: "Choose a model", value: "" }] : []),
                   ...(provider?.models ?? []).map((entry) => ({ label: entry.label, value: entry.id }))]}
                 onValueChange={(value) => {
-                  updatePersona(persona.id, { model: value, effort: "" });
+                  updatePreset(preset.id, { model: value, effort: "" });
                 }} disabled={!ready || !provider?.models.length} />
-              {catalogLoading || (model?.efforts.length ?? 0) > 0 ? <SettingsSelect label="Reasoning effort" value={catalogLoading || effortAvailable ? persona.effort : ""} error={fieldError("personas", index, "effort")}
-                hint={model && persona.effort && !effortAvailable ? "The saved setting is no longer supported. The model default will be used." : undefined}
-                options={catalogLoading ? [{ label: "Loading...", value: persona.effort }] : [{ label: "Provider default", value: "" }, ...(model?.efforts ?? []).map((entry) => ({ label: entry.label, value: entry.id }))]}
-                onValueChange={(effort) => updatePersona(persona.id, { effort })} disabled={!ready || catalogLoading} /> : null}
-              {modes.length > 0 ? <SettingsSelect label="Work mode" value={modes.some((mode) => mode.id === persona.workMode) ? persona.workMode : ""}
+              {catalogLoading || (model?.efforts.length ?? 0) > 0 ? <SettingsSelect label="Reasoning effort" value={catalogLoading || effortAvailable ? preset.effort : ""} error={fieldError("presets", index, "effort")}
+                hint={model && preset.effort && !effortAvailable ? "The saved setting is no longer supported. The model default will be used." : undefined}
+                options={catalogLoading ? [{ label: "Loading...", value: preset.effort }] : [{ label: "Provider default", value: "" }, ...(model?.efforts ?? []).map((entry) => ({ label: entry.label, value: entry.id }))]}
+                onValueChange={(effort) => updatePreset(preset.id, { effort })} disabled={!ready || catalogLoading} /> : null}
+              {modes.length > 0 ? <SettingsSelect label="Work mode" value={modes.some((mode) => mode.id === preset.workMode) ? preset.workMode : ""}
                 options={[{ label: "Automatic", value: "" }, ...modes.map((mode) => ({ label: mode.label, value: mode.id }))]}
-                hint="Choose how this persona works. Planning uses the provider's planning mode when available."
-                onValueChange={(workMode) => updatePersona(persona.id, { workMode })} disabled={!ready} /> : null}
-              <SettingsInput label="Instructions" initialValue={persona.instructions} error={fieldError("personas", index, "instructions")}
-                onChangeText={(instructions) => updatePersona(persona.id, { instructions })} disabled={!ready} />
-            </PersonaFields>
+                hint="Choose how this preset works. Planning uses the provider's planning mode when available."
+                onValueChange={(workMode) => updatePreset(preset.id, { workMode })} disabled={!ready} /> : null}
+              <SettingsInput label="Instructions" initialValue={preset.instructions} error={fieldError("presets", index, "instructions")}
+                onChangeText={(instructions) => updatePreset(preset.id, { instructions })} disabled={!ready} />
+            </PresetFields>
             </SettingsSection>
             </View>
           ); })}
-          <SettingsButton theme={theme} label="Create persona" variant="add" disabled={!ready || draft.personas.length >= MAX_PERSONAS}
-            onPress={() => updateDraft((current) => ({ ...current, personas: [...current.personas, { id: "custom-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8), name: "Custom persona", description: "", taskDepth: "medium", provider: catalog.data?.[0]?.id ?? "codex", model: "", effort: "", workMode: "", instructions: "", enabled: true, taskTypes: [], taskTypesAuto: true, taskTypesScope: "" }] }))} />
-          {draft.personas.length >= MAX_PERSONAS ? <Text style={{ color: theme.colors.foregroundMuted }}>You have reached the limit of {MAX_PERSONAS} personas.</Text> : null}
+          <SettingsButton theme={theme} label="Create preset" variant="add" disabled={!ready || draft.presets.length >= MAX_PRESETS}
+            onPress={() => updateDraft((current) => ({ ...current, presets: [...current.presets, { id: "custom-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8), name: "Custom preset", description: "", taskDepth: "medium", provider: catalog.data?.[0]?.id ?? "codex", model: "", effort: "", workMode: "", instructions: "", enabled: true, taskTypes: [], taskTypesAuto: true, taskTypesScope: "" }] }))} />
+          {draft.presets.length >= MAX_PRESETS ? <Text style={{ color: theme.colors.foregroundMuted }}>You have reached the limit of {MAX_PRESETS} presets.</Text> : null}
         </View>
       </SettingsSection>
     </>
   );
 }
 
-function PersonaScope({ theme, value, error, onChangeText, disabled }: {
+function PresetScope({ theme, value, error, onChangeText, disabled }: {
   theme: PluginSurfaceProps["theme"]; value: string; error?: string; onChangeText(text: string): void; disabled: boolean;
 }) {
   return (
     <View style={{ paddingVertical: 16, gap: 8 }}>
       <Text style={{ color: theme.colors.foreground }}>Scope</Text>
       <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>
-        Describe the tasks this persona owns and its limits. Auto uses this complete scope. Leave empty for manual selection only.
+        Describe the tasks this preset owns and its limits. Auto uses this complete scope. Leave empty for manual selection only.
       </Text>
       <TextInput accessibilityLabel="Scope" value={value} onChangeText={onChangeText} editable={!disabled}
-        multiline maxLength={240} placeholder="When should Auto choose this persona?"
+        multiline maxLength={240} placeholder="When should Auto choose this preset?"
         placeholderTextColor={theme.colors.foregroundMuted}
         style={{ color: theme.colors.foreground, backgroundColor: theme.colors.surface2, borderRadius: 6,
           padding: 12, minHeight: 88, fontSize: 13, textAlignVertical: "top" }} />
@@ -316,21 +316,21 @@ function PersonaScope({ theme, value, error, onChangeText, disabled }: {
   );
 }
 
-function PersonaTaskTypes({ theme, persona, state, error, disabled, onToggle, onDetect }: {
-  theme: PluginSurfaceProps["theme"]; persona: Persona; state?: DetectionState; error?: string; disabled: boolean;
+function PresetTaskTypes({ theme, preset, state, error, disabled, onToggle, onDetect }: {
+  theme: PluginSurfaceProps["theme"]; preset: Preset; state?: DetectionState; error?: string; disabled: boolean;
   onToggle(type: TaskType): void; onDetect(): void;
 }) {
-  const selected = assignedTaskTypes(persona) ?? [];
+  const selected = assignedTaskTypes(preset) ?? [];
   const status = state?.detecting ? "Detecting from scope..."
     : state?.error ? `Could not detect task types. ${state.error}`
-    : !persona.taskTypesAuto ? "Set manually."
-    : needsDetection(persona) ? "Waiting to detect from scope."
+    : !preset.taskTypesAuto ? "Set manually."
+    : needsDetection(preset) ? "Waiting to detect from scope."
     : "Detected from scope. Select a type to set them manually.";
   return (
     <View style={{ paddingVertical: 16, gap: 8 }}>
       <Text style={{ color: theme.colors.foreground }}>Used for</Text>
       <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>
-        Auto first picks the kind of work, then compares scopes among the personas used for it.
+        Auto first picks the kind of work, then compares scopes among the presets used for it.
       </Text>
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
         {TASK_TYPES.map((type) => {
@@ -351,7 +351,7 @@ function PersonaTaskTypes({ theme, persona, state, error, disabled, onToggle, on
       <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         {state?.detecting ? <ActivityIndicator size="small" color={theme.colors.foregroundMuted} /> : null}
         <Text accessibilityLiveRegion="polite" style={{ flex: 1, color: state?.error ? theme.colors.statusDanger : theme.colors.foregroundMuted, fontSize: 12 }}>{status}</Text>
-        {!state?.detecting && (!persona.taskTypesAuto || state?.error) ?
+        {!state?.detecting && (!preset.taskTypesAuto || state?.error) ?
           <SettingsButton theme={theme} label="Detect from scope" accessibilityLabel="Detect task types from scope" disabled={disabled} onPress={onDetect} /> : null}
       </View>
       {error ? <Text style={{ color: theme.colors.statusDanger, fontSize: 12 }}>{error}</Text> : null}
@@ -359,7 +359,7 @@ function PersonaTaskTypes({ theme, persona, state, error, disabled, onToggle, on
   );
 }
 
-function PersonaFields({ theme, children }: { theme: PluginSurfaceProps["theme"]; children: ReactNode }) {
+function PresetFields({ theme, children }: { theme: PluginSurfaceProps["theme"]; children: ReactNode }) {
   return (
     <View>
       {Children.toArray(children).map((child, index) => (
@@ -372,7 +372,7 @@ function PersonaFields({ theme, children }: { theme: PluginSurfaceProps["theme"]
   );
 }
 
-function RemovePersonaButton({ theme, accessibilityLabel, disabled, onPress }: {
+function RemovePresetButton({ theme, accessibilityLabel, disabled, onPress }: {
   theme: PluginSurfaceProps["theme"];
   accessibilityLabel: string;
   disabled: boolean;

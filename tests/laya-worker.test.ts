@@ -5,8 +5,8 @@ import { spawnSync } from "node:child_process";
 import { test } from "node:test";
 import { LAYA_WORKER } from "../server/laya-worker";
 import { LAYA_QUESTIONS } from "../server/laya-questions";
-import { personaQuestions } from "../server/persona-classification";
-import { defaults, MAX_PERSONAS } from "../shared/settings";
+import { presetQuestions } from "../server/preset-classification";
+import { defaults, MAX_PRESETS } from "../shared/settings";
 
 const python = process.env.LAYA_TEST_PYTHON ?? (existsSync(".test-python/python.exe") ? resolve(".test-python/python.exe") : "python");
 const available = spawnSync(python, ["--version"], { windowsHide: true }).status === 0;
@@ -105,11 +105,11 @@ test("Python bridge rejects oversized lines and incompatible versions", (t) => {
   assert.deepEqual(JSON.parse(incompatible.stdout), { error: "startup" });
 });
 
-test("Python bridge accepts the maximum persona roster without expanding the question budget", (t) => {
+test("Python bridge accepts the maximum preset roster without expanding the question budget", (t) => {
   if (!requiresPython(t)) return;
-  const personas = Array.from({ length: MAX_PERSONAS }, (_, index) => ({ ...defaults.personas[0], id: `custom-${index}`,
+  const presets = Array.from({ length: MAX_PRESETS }, (_, index) => ({ ...defaults.presets[0], id: `custom-${index}`,
     name: "Role ".repeat(16), description: "Purpose ".repeat(30), instructions: "Instructions ".repeat(600) }));
-  const questions = { ...LAYA_QUESTIONS, ...personaQuestions(personas).questions };
+  const questions = { ...LAYA_QUESTIONS, ...presetQuestions(presets).questions };
   const result = run('\nexec(sys.argv[2], {"__name__": "__main__"})\n', JSON.stringify({ state: { request: "Review" }, questions }) + "\n");
   assert.equal(result.status, 0, result.stderr);
   assert.deepEqual(result.stdout.trim().split("\n").map((line) => JSON.parse(line)), [{ ready: true }, { answers: { echo: "Review" } }]);

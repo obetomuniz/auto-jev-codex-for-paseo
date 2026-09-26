@@ -16,7 +16,7 @@ const choice = (value: string) => ({ type: "choice" as const, choice: value, pro
 
 async function harness(t: TestContext) {
   t.mock.method(workspaceState, "readWorkspaceState", async () => ({ status: "unavailable" as const }));
-  const settings = { ...defaults, apiKey: "test-key", personas: defaults.personas.map((persona) => ({ ...persona })) };
+  const settings = { ...defaults, apiKey: "test-key", presets: defaults.presets.map((preset) => ({ ...preset })) };
   t.mock.method(fs, "readFile", async () => JSON.stringify(settings));
   let result: RouteAnswers = answers();
   const states: Record<string, unknown>[] = [];
@@ -24,7 +24,7 @@ async function harness(t: TestContext) {
   t.mock.method(globalThis, "fetch", async (...[_url, init]: Parameters<typeof fetch>) => {
     states.push(JSON.parse(String(init?.body)).state);
     await classificationGate;
-    return Response.json({ answers: wireAnswers(result, settings.personas) });
+    return Response.json({ answers: wireAnswers(result, settings.presets) });
   });
   let notify: (event: CodexNotification) => void = () => {};
   let request: (event: CodexServerRequest) => Promise<unknown> = async () => {};
@@ -152,12 +152,12 @@ test("manual model, speed, plan and permissions override routing without leaking
   assert.ok(!JSON.stringify(saved.persistence).includes("full-access"));
 });
 
-test("Codex persona work mode changes the approval reviewer and preserves intent and Plan boundaries", async (t) => {
+test("Codex preset work mode changes the approval reviewer and preserves intent and Plan boundaries", async (t) => {
   const h = await harness(t);
-  const persona = h.settings.personas.find((item) => item.id === "tech-lead")!;
-  await h.configure({ model: persona.id, settings: { modelScope: "pinned" } });
+  const preset = h.settings.presets.find((item) => item.id === "tech-lead")!;
+  await h.configure({ model: preset.id, settings: { modelScope: "pinned" } });
   for (const workMode of ["", "auto", "auto-review", "auto"]) {
-    persona.workMode = workMode;
+    preset.workMode = workMode;
     await h.send("Implement the change");
     assert.equal(h.latest().approvalsReviewer, workMode === "auto" ? "user" : "auto_review");
     assert.equal(h.latest().approvalPolicy, "on-request");
@@ -178,13 +178,13 @@ test("Codex persona work mode changes the approval reviewer and preserves intent
 
 test("Auto uses Writer for prose and Tech Lead for code delivery", async (t) => {
   const h = await harness(t);
-  h.setResult(answers({ taskType: choice("write"), personaScores: { writer: 1 }, effort: choice("medium") }));
+  h.setResult(answers({ taskType: choice("write"), presetScores: { writer: 1 }, effort: choice("medium") }));
   await h.send("Rewrite the installation guide for beginners");
   assert.equal(h.latest().model, "gpt-5.6-terra");
   assert.equal(h.latest().effort, "medium");
 
   h.complete();
-  h.setResult(answers({ personaScores: { "tech-lead": 1 }, effort: choice("high") }));
+  h.setResult(answers({ presetScores: { "tech-lead": 1 }, effort: choice("high") }));
   await h.send("Refactor the cross-service authentication flow");
   assert.equal(h.latest().model, "gpt-5.6-sol");
   assert.equal(h.latest().effort, "high");
@@ -409,7 +409,7 @@ for (const classifier of ["jev", "laya"] as const) {
     const h = await harness(t);
     h.settings.classifier = classifier;
     // Two review owners: a Standard-depth setup with the best scope fit and the Expert Critic.
-    Object.assign(h.settings.personas.find((persona) => persona.id === "reporter")!, { effort: "high", taskTypes: ["review"], taskTypesAuto: false });
+    Object.assign(h.settings.presets.find((preset) => preset.id === "reporter")!, { effort: "high", taskTypes: ["review"], taskTypesAuto: false });
     let workspace: workspaceState.WorkspaceState = { status: "available", basis: "uncommitted", files: 1, added: 1, removed: 0, binary: 0, untracked: 0, capped: false };
     t.mock.method(workspaceState, "readWorkspaceState", async (cwd: string) => {
       assert.equal(cwd, h.config.cwd);
@@ -419,21 +419,21 @@ for (const classifier of ["jev", "laya"] as const) {
       assert.deepEqual(state.workspace, workspace);
       assert.equal(state.request, "are the changes here good ?");
       return answers({ intent: choice("review"), effort: choice(workspace.status === "available" && workspace.files > 1 ? "high" : "low"),
-        personaScores: { reporter: 0.98, critic: 0.85, staff: 0.2, writer: 0.15, "tech-lead": 0.1 } });
+        presetScores: { reporter: 0.98, critic: 0.85, staff: 0.2, writer: 0.15, "tech-lead": 0.1 } });
     };
     if (classifier === "jev") t.mock.method(globalThis, "fetch", async (...[_url, init]: Parameters<typeof fetch>) => {
-      return Response.json({ answers: wireAnswers(classify(JSON.parse(String(init?.body)).state), h.settings.personas) });
+      return Response.json({ answers: wireAnswers(classify(JSON.parse(String(init?.body)).state), h.settings.presets) });
     });
     else {
       t.mock.method(LayaClassifier.prototype, "evaluate", async (input: Parameters<LayaClassifier["evaluate"]>[0]) => classify({ request: input.prompt, workspace: input.workspace }));
       t.after(disposeLaya);
     }
     await h.send("are the changes here good ?");
-    assert.equal(h.latest().model, defaults.personas.find((persona) => persona.id === "reporter")!.model);
+    assert.equal(h.latest().model, defaults.presets.find((preset) => preset.id === "reporter")!.model);
     h.complete();
     workspace = { ...workspace, files: 41, added: 2300, removed: 418 };
     await h.send("are the changes here good ?");
-    assert.equal(h.latest().model, defaults.personas.find((persona) => persona.id === "critic")!.model);
+    assert.equal(h.latest().model, defaults.presets.find((preset) => preset.id === "critic")!.model);
     assert.equal(h.latest().sandboxPolicy.type, "readOnly");
     assert.equal(h.latest().collaborationMode.mode, "default");
     const notifications = h.events.filter((event) => event.type === "timeline.item" && event.item.type === "notification");
@@ -442,10 +442,10 @@ for (const classifier of ["jev", "laya"] as const) {
     assert.ok(latest.type === "timeline.item" && latest.item.type === "notification" && /Auto: Critic.*Type: Review.*Depth: Deep/.test(latest.item.message));
   });
 
-  test(`${classifier} starts a read-only turn for a generic message with low persona fit`, async (t) => {
+  test(`${classifier} starts a read-only turn for a generic message with low preset fit`, async (t) => {
     const h = await harness(t);
-    t.mock.method(fs, "readFile", async () => JSON.stringify({ ...defaults, classifier, apiKey: "test-key", thresholdPersona: 0.9 }));
-    const result = answers({ intent: choice("discuss"), taskType: choice("other"), personaScores: {
+    t.mock.method(fs, "readFile", async () => JSON.stringify({ ...defaults, classifier, apiKey: "test-key", thresholdPreset: 0.9 }));
+    const result = answers({ intent: choice("discuss"), taskType: choice("other"), presetScores: {
       critic: 0.01, reporter: 0.03, staff: 0.01, "tech-lead": 0.04, writer: 0.08,
     } });
     h.setResult(result);
@@ -456,7 +456,7 @@ for (const classifier of ["jev", "laya"] as const) {
     await h.send("testing");
     const starts = h.calls.filter((call) => call.method === "turn/start");
     assert.equal(starts.length, 1, "Low fit must still start a provider turn.");
-    assert.equal(h.latest().model, defaults.personas.find((persona) => persona.id === "writer")!.model);
+    assert.equal(h.latest().model, defaults.presets.find((preset) => preset.id === "writer")!.model);
     assert.equal(h.latest().sandboxPolicy.type, "readOnly");
     assert.equal(h.latest().collaborationMode.mode, "default");
     assert.equal(h.latest().approvalPolicy, "on-request");
@@ -476,21 +476,21 @@ for (const classifier of ["jev", "laya"] as const) {
       ["discuss", "standard", "medium", "Explain how this validation works", "gpt-5.6-terra"],
       ["discuss", "lead", "high", "Investigate this race across components", "gpt-5.6-sol"],
       ["discuss", "staff", "xhigh", "Design cross-region consistency under conflicting constraints", "gpt-6-astra"],
-      ["review", "review", "medium", "Review this validation rule", defaults.personas.find((persona) => persona.id === "critic")!.model],
-      ["review", "review", "high", "Review error recovery across these components", defaults.personas.find((persona) => persona.id === "critic")!.model],
+      ["review", "review", "medium", "Review this validation rule", defaults.presets.find((preset) => preset.id === "critic")!.model],
+      ["review", "review", "high", "Review error recovery across these components", defaults.presets.find((preset) => preset.id === "critic")!.model],
       ["review", "review", "xhigh", "Audit tenant isolation across services", "gpt-6-astra"],
       ["implement", "lead", "high", "Rename this local variable", "gpt-5.6-sol"],
       ["implement", "standard", "medium", "Rewrite the validation guide", "gpt-5.6-terra"],
       ["implement", "lead", "high", "Implement recovery across components", "gpt-5.6-sol"],
     ] as const;
     for (const [intent, lane, effort, prompt, model] of cases) {
-      const persona = ({ cheap: "reporter", standard: "writer", lead: "tech-lead", staff: "staff", review: "critic" } as const)[lane];
-      const taskType = ({ reporter: "report", writer: "write", "tech-lead": "implement", staff: "design", critic: "review" } as const)[persona];
-      result = answers({ intent: choice(intent), taskType: choice(taskType), personaScores: { [persona]: 1 }, effort: choice(effort) });
+      const preset = ({ cheap: "reporter", standard: "writer", lead: "tech-lead", staff: "staff", review: "critic" } as const)[lane];
+      const taskType = ({ reporter: "report", writer: "write", "tech-lead": "implement", staff: "design", critic: "review" } as const)[preset];
+      result = answers({ intent: choice(intent), taskType: choice(taskType), presetScores: { [preset]: 1 }, effort: choice(effort) });
       h.setResult(result);
       await h.send(prompt);
       assert.equal(h.latest().model, model, prompt);
-      assert.equal(h.latest().effort, intent === "review" ? defaults.personas.find((persona) => persona.id === "critic")!.effort : effort);
+      assert.equal(h.latest().effort, intent === "review" ? defaults.presets.find((preset) => preset.id === "critic")!.effort : effort);
       assert.equal(h.latest().sandboxPolicy.type, intent === "implement" ? "workspaceWrite" : "readOnly", prompt);
       assert.equal(h.latest().approvalPolicy, "on-request");
       assert.equal(h.latest().approvalsReviewer, "auto_review");

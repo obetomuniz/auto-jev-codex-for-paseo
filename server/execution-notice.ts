@@ -1,11 +1,11 @@
-import type { Persona } from "../shared/settings";
+import type { Preset } from "../shared/settings";
 import type { Intent } from "./classifier";
 import { TASK_DEPTH_LABELS, type TaskDepth } from "../shared/task-depth";
 import { TASK_TYPE_LABELS, type TaskType } from "../shared/task-types";
 
 /** One user-facing summary of the configuration applied to a started turn. */
 export function executionNotice(input: {
-  persona: Persona;
+  preset: Preset;
   intent: Intent;
   manual?: boolean;
   modelLabel?: string;
@@ -18,8 +18,8 @@ export function executionNotice(input: {
 }): string {
   const intent = { discuss: "Discussion", review: "Review", implement: "Implementation" }[input.intent];
   const summary = [
-    `${input.manual ? "Selected" : "Auto"}: ${input.persona.name}`,
-    `${input.persona.provider}/${input.modelLabel || input.persona.model}`,
+    `${input.manual ? "Selected" : "Auto"}: ${input.preset.name}`,
+    `${input.preset.provider}/${input.modelLabel || input.preset.model}`,
     intent,
     ...(input.taskType ? [`Type: ${TASK_TYPE_LABELS[input.taskType]}`] : []),
     ...(input.taskDepth ? [`Depth: ${TASK_DEPTH_LABELS[input.taskDepth]}`] : []),

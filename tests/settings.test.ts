@@ -3,36 +3,36 @@ import fs from "node:fs/promises";
 import { test, type TestContext } from "node:test";
 import { loadSettings, parseStoredSettings, saveSettings } from "../server/settings-store";
 import { defaults, settingsSchema, toPublic } from "../shared/settings";
-import { assignedTaskTypes } from "../shared/personas";
+import { assignedTaskTypes } from "../shared/presets";
 
 test("task depth migration seeds templates once without reading model names or reasoning settings", () => {
-  const legacy = defaults.personas.map(({ taskDepth: _depth, ...persona }) => ({ ...persona, provider: "claude", effort: "high" }));
-  const migrated = parseStoredSettings({ personas: [...legacy, { ...legacy[0], id: "custom" }] });
-  assert.deepEqual(migrated.personas.slice(0, 5).map((persona) => persona.taskDepth), defaults.personas.map((persona) => persona.taskDepth));
-  assert.equal(migrated.personas[5].taskDepth, "medium");
-  assert.ok(migrated.personas.every((persona) => persona.provider === "claude" && persona.effort === "high"));
-  migrated.personas[0].taskDepth = "low";
-  assert.equal(parseStoredSettings(migrated).personas[0].taskDepth, "low");
+  const legacy = defaults.presets.map(({ taskDepth: _depth, ...preset }) => ({ ...preset, provider: "claude", effort: "high" }));
+  const migrated = parseStoredSettings({ presets: [...legacy, { ...legacy[0], id: "custom" }] });
+  assert.deepEqual(migrated.presets.slice(0, 5).map((preset) => preset.taskDepth), defaults.presets.map((preset) => preset.taskDepth));
+  assert.equal(migrated.presets[5].taskDepth, "medium");
+  assert.ok(migrated.presets.every((preset) => preset.provider === "claude" && preset.effort === "high"));
+  migrated.presets[0].taskDepth = "low";
+  assert.equal(parseStoredSettings(migrated).presets[0].taskDepth, "low");
 });
 
-test("task type migration seeds preset scopes only and preserves stored or edited tags", () => {
-  const legacy = defaults.personas.map(({ taskTypes: _types, taskTypesAuto: _auto, taskTypesScope: _scope, ...persona }) => persona);
+test("task type migration seeds default scopes only and preserves stored or edited tags", () => {
+  const legacy = defaults.presets.map(({ taskTypes: _types, taskTypesAuto: _auto, taskTypesScope: _scope, ...preset }) => preset);
   const edited = { ...legacy[0], id: "custom", description: "Translate prose into Portuguese." };
   const renamed = { ...legacy[2], id: "reviewer", name: "Reviewer" };
-  const migrated = parseStoredSettings({ personas: [...legacy, edited, renamed] });
-  assert.deepEqual(migrated.personas.slice(0, 5).map(assignedTaskTypes), defaults.personas.map((persona) => persona.taskTypes));
-  assert.equal(assignedTaskTypes(migrated.personas[5]), null, "An edited scope stays untagged until detection.");
-  assert.deepEqual(assignedTaskTypes(migrated.personas[6]), ["review"], "Seeding follows the scope, not the ID.");
-  const manual = { ...defaults.personas[0], taskTypes: ["write" as const], taskTypesAuto: false };
-  assert.deepEqual(parseStoredSettings({ personas: [manual] }).personas[0].taskTypes, ["write"]);
+  const migrated = parseStoredSettings({ presets: [...legacy, edited, renamed] });
+  assert.deepEqual(migrated.presets.slice(0, 5).map(assignedTaskTypes), defaults.presets.map((preset) => preset.taskTypes));
+  assert.equal(assignedTaskTypes(migrated.presets[5]), null, "An edited scope stays untagged until detection.");
+  assert.deepEqual(assignedTaskTypes(migrated.presets[6]), ["review"], "Seeding follows the scope, not the ID.");
+  const manual = { ...defaults.presets[0], taskTypes: ["write" as const], taskTypesAuto: false };
+  assert.deepEqual(parseStoredSettings({ presets: [manual] }).presets[0].taskTypes, ["write"]);
 });
 
 test("task type settings reject empty manual sets and duplicates", () => {
-  const persona = defaults.personas[0];
-  const parse = (values: Partial<typeof persona>) => settingsSchema.safeParse({ personas: [{ ...persona, ...values }] });
+  const preset = defaults.presets[0];
+  const parse = (values: Partial<typeof preset>) => settingsSchema.safeParse({ presets: [{ ...preset, ...values }] });
   const empty = parse({ taskTypes: [], taskTypesAuto: false });
   assert.equal(empty.success, false);
-  assert.deepEqual(empty.error!.issues[0].path, ["personas", 0, "taskTypes"]);
+  assert.deepEqual(empty.error!.issues[0].path, ["presets", 0, "taskTypes"]);
   assert.equal(parse({ taskTypes: ["review", "review"] }).success, false);
   assert.equal(parse({ taskTypes: [], taskTypesAuto: true }).success, true);
   assert.equal(parse({ taskTypes: ["unknown" as never] }).success, false);
@@ -149,16 +149,16 @@ test("saving migrated settings preserves the key and model choices across reload
   assert.deepEqual(await loadSettings(), { ...loaded, model: "jev-test-a" });
 });
 
-test("saving deleted default personas preserves deletions, including an empty list", async (t) => {
+test("saving deleted default presets preserves deletions, including an empty list", async (t) => {
   let stored = JSON.stringify({ ...defaults, apiKey: "test-key" });
   t.mock.method(fs, "readFile", async () => stored);
   mockSettingsWrites(t, (text) => { stored = text; });
-  const remaining = defaults.personas.slice(1).map((persona) => ({ ...persona, model: "configured-model" }));
-  const saved = await saveSettings({ ...defaults, personas: remaining });
-  assert.deepEqual(saved.personas, remaining);
-  assert.deepEqual((await loadSettings()).personas, remaining);
-  await saveSettings({ ...defaults, personas: [] });
-  assert.deepEqual((await loadSettings()).personas, []);
+  const remaining = defaults.presets.slice(1).map((preset) => ({ ...preset, model: "configured-model" }));
+  const saved = await saveSettings({ ...defaults, presets: remaining });
+  assert.deepEqual(saved.presets, remaining);
+  assert.deepEqual((await loadSettings()).presets, remaining);
+  await saveSettings({ ...defaults, presets: [] });
+  assert.deepEqual((await loadSettings()).presets, []);
   assert.equal((await loadSettings()).apiKey, "test-key");
 });
 

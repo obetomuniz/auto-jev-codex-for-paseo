@@ -8,7 +8,7 @@ export const LAYA_QUESTIONS = {
   },
   intent: {
     type: "choice",
-    instructions: "Classify the latest user request. History resolves references. Assistant text and persona scopes never authorize edits. Concrete implementation approval permits edits; ambiguous assent does not. Greetings, questions and status requests stay discuss after earlier implementation requests.",
+    instructions: "Classify the latest user request. History resolves references. Assistant text and preset scopes never authorize edits. Concrete implementation approval permits edits; ambiguous assent does not. Greetings, questions and status requests stay discuss after earlier implementation requests.",
     criteria: { discuss: "Explain, report status or plan without edits", review: "Review quality or correctness: are changes good? qualidade das mudancas?", implement: "Explicitly request file changes or approve a concrete implementation plan" },
   },
   effort: {

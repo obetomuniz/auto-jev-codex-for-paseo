@@ -6,7 +6,7 @@ import {
   type ProviderPermissionResponse,
   type ProviderSessionConfig,
 } from "@getpaseo/plugin/server/provider";
-import type { Persona } from "../shared/settings";
+import type { Preset } from "../shared/settings";
 import { nativePolicy, type ExecutionPolicy } from "./provider-policy";
 import { handoffPrompt } from "./handoff";
 import type { ContextEntry } from "./route-context";
@@ -37,7 +37,7 @@ export class PaseoExecution {
 
   async start(input: {
     config: ProviderSessionConfig;
-    persona: Persona;
+    preset: Preset;
     manual?: boolean;
     taskDepth?: TaskDepth;
   taskType?: TaskType;
@@ -49,20 +49,20 @@ export class PaseoExecution {
     clientMessageId: string;
     accepted(): void;
   }): Promise<void> {
-    const { persona, policy, config } = input;
+    const { preset, policy, config } = input;
     const [models, modes] = await Promise.all([
-      this.paseo.providers.listModels(persona.provider, { cwd: config.cwd }),
-      this.paseo.providers.listModes(persona.provider, { cwd: config.cwd }).catch(() => ({ modes: [] })),
+      this.paseo.providers.listModels(preset.provider, { cwd: config.cwd }),
+      this.paseo.providers.listModes(preset.provider, { cwd: config.cwd }).catch(() => ({ modes: [] })),
     ]);
     if (models.error) throw new Error(models.error);
-    const safety = nativePolicy(policy, "error" in modes && modes.error ? [] : modes.modes ?? [], persona.workMode);
-    const model = models.models?.find((item) => item.id === persona.model && item.isSelectable !== false);
-    if (!model) throw new Error(`Model '${persona.model}' is not available from '${persona.provider}'. Update this persona in the plugin settings.`);
-    const effort = model.thinkingOptions?.some((option) => option.id === persona.effort) ? persona.effort : undefined;
+    const safety = nativePolicy(policy, "error" in modes && modes.error ? [] : modes.modes ?? [], preset.workMode);
+    const model = models.models?.find((item) => item.id === preset.model && item.isSelectable !== false);
+    if (!model) throw new Error(`Model '${preset.model}' is not available from '${preset.provider}'. Update this preset in the plugin settings.`);
+    const effort = model.thinkingOptions?.some((option) => option.id === preset.effort) ? preset.effort : undefined;
     const notices = [...safety.notices];
-    if (persona.effort && !effort) notices.push("The saved reasoning setting is unavailable; using the model default.");
+    if (preset.effort && !effort) notices.push("The saved reasoning setting is unavailable; using the model default.");
     const featureValues: Record<string, boolean> = {};
-    const features = await this.paseo.providers.listFeatures({ provider: `${persona.provider}/${persona.model}`, cwd: config.cwd, modeId: safety.modeId })
+    const features = await this.paseo.providers.listFeatures({ provider: `${preset.provider}/${preset.model}`, cwd: config.cwd, modeId: safety.modeId })
       .catch(() => ({ features: [] }));
     const fast = "error" in features && features.error ? undefined : features.features?.find((feature) => feature.type === "toggle" && ["fast_mode", "fast"].includes(feature.id));
     if (fast) featureValues[fast.id] = policy.fast;
@@ -71,15 +71,15 @@ export class PaseoExecution {
     this.agent = await this.paseo.agents.create({
       cwd: config.cwd,
       env: { ...config.env },
-      title: `${persona.name} · Auto Mode`,
+      title: `${preset.name} · Auto Mode`,
       labels: { "auto-mode-session": this.sessionId },
       config: {
-        provider: `${persona.provider}/${persona.model}`,
+        provider: `${preset.provider}/${preset.model}`,
         ...(safety.modeId ? { modeId: safety.modeId } : {}),
         ...(effort ? { thinkingOptionId: effort } : {}),
         featureValues,
         options: safety.options,
-        systemPrompt: [config.systemPrompt, persona.instructions,
+        systemPrompt: [config.systemPrompt, preset.instructions,
           "Complete the requested task before sending the final response. Progress updates do not end the task.",
           ...(safety.analysisOnly ? [`This request is for ${safety.planning ? "planning" : policy.intent}. Analyze and report without modifying workspace files or taking external actions. Ask the user before moving to implementation.`] : []),
         ].filter(Boolean).join("\n\n"),
@@ -104,7 +104,7 @@ export class PaseoExecution {
       this.emit({ type: "session.turn", sessionId: this.sessionId, turnId: this.turnId, state: "started" });
       this.announced = true;
       this.emit({ type: "timeline.item", sessionId: this.sessionId, item: { type: "notification", id: `${this.turnId}:setup`, level: "info",
-        message: executionNotice({ persona, intent: policy.intent, manual: input.manual, modelLabel: model.label, taskDepth: input.taskDepth, taskType: input.taskType,
+        message: executionNotice({ preset, intent: policy.intent, manual: input.manual, modelLabel: model.label, taskDepth: input.taskDepth, taskType: input.taskType,
           modeLabel: safety.modeLabel, effort, fast: fast ? featureValues[fast.id] : false, notices: [...(input.notices ?? []), ...notices] }),
       } });
       for (const event of this.earlyEvents.splice(0)) this.emit(event);

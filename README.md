@@ -1,23 +1,33 @@
 # Auto Mode for Paseo
 
-![Three Paseo sessions. Each message shows the routing notice with the selected persona, model, task type, and depth.](docs/hero.png)
+> [!NOTE]
+> This project is an experiment. It explores what System 1 models can do as
+> message routers. A System 1 model gives a fast, intuitive answer without
+> step-by-step reasoning. TypeSafe Jev and Laya are System 1 models.
+> Here, one of them only classifies each message and selects a preset.
+> It does not read your code or plan the work, so it can select the wrong preset.
+> Do not use this plugin in production. Examine each routing notice, and select
+> a preset manually when the choice is important.
+
+![Three Paseo sessions. Each message shows the routing notice with the selected preset, model, task type, and depth.](docs/hero.png)
 
 Auto Mode for Paseo is a [Paseo](https://github.com/getpaseo/paseo) plugin.
-It reads each new message and sends it to the best persona for the task.
-Each persona has its own provider, model, reasoning setting, and instructions.
-A persona can use Codex, Claude, OpenCode, or another provider installed in Paseo.
+It reads each new message and sends it to the best preset for the task.
+Each preset has its own provider, model, reasoning setting, and instructions.
+A preset can use Codex, Claude, OpenCode, or another provider installed in Paseo.
 TypeSafe Jev or a local Laya model classifies the message.
 
-The conversation picker contains Auto and persona names. Model names stay in
+The conversation picker contains Auto and preset names. Model names stay in
 the plugin settings. Paseo owns workspaces and native provider authentication.
-Codex is optional when the configured personas use other providers.
+The default presets start with Codex models. You can change the provider of
+each preset. Codex is necessary only for presets that use it.
 
 ## Requirements
 
 - Paseo 0.8.0 or later with plugins enabled.
 - Node.js 24 and npm.
-- An installed and authenticated Paseo provider for each enabled persona.
-- For Codex personas only: Codex CLI 0.153.4 or a compatible version, with a local login.
+- An installed and authenticated Paseo provider for each enabled preset.
+- For Codex presets only: Codex CLI 0.153.4 or a compatible version, with a local login.
 - For Jev: a TypeSafe API key.
 - For Laya: no separate Python installation is needed on Windows.
 
@@ -110,23 +120,23 @@ Laya quality for this routing task has not been benchmarked. Its confidence
 score is not a guarantee of correct intent. Evaluate representative requests
 in your language before using it for unattended work.
 Both classifiers can misjudge scope or task depth. Overlapping scopes can be ambiguous.
-Jev is the recommended classifier for Auto persona selection. In local smoke tests
-with the default personas and two custom personas, Jev selected the expected persona
+Jev is the recommended classifier for Auto preset selection. In local smoke tests
+with the default presets and two custom presets, Jev selected the expected preset
 in 16 of 18 requests and Laya in 14 of 18. Jev tagged 12 of 12 sample scopes
 correctly and Laya 10 of 12.
 Routing tests validate selection rules. They are not an accuracy benchmark.
 See the [Laya limitations](https://github.com/NandhaKishorM/laya#honest-limits).
 
-### Personas
+### Presets
 
 Open **Settings > Plugins > Auto Mode for Paseo**.
 Click **Refresh** to load the providers and models available on this daemon.
-Choose a provider for each persona. Select a model from **Available models**.
+Choose a provider for each preset. Select a model from **Available models**.
 Choose a supported reasoning setting. Select **Provider default** to use the model's default.
 Edit the instructions and description. Valid changes save automatically.
 A model release does not require a plugin update.
 
-| Persona | Automatic role |
+| Preset | Automatic role |
 | --- | --- |
 | Tech Lead | Code delivery, debugging, and implementation validation |
 | Staff | Technical strategy, architecture, and consequential tradeoffs |
@@ -134,24 +144,24 @@ A model release does not require a plugin update.
 | Reporter | Facts, progress, changes, and open questions |
 | Writer | Prose, documentation, explanations, and user-facing text |
 
-Each persona has its own settings block. You can rename, disable, or remove any
-persona, including the defaults. Complete a new persona's required fields to save it.
-An incomplete new persona stays local while you edit it.
-The initial personas are Tech Lead, Staff, Critic, Reporter, and Writer. They are editable starting points.
+Each preset has its own settings block. You can rename, disable, or remove any
+preset, including the defaults. Complete a new preset's required fields to save it.
+An incomplete new preset stays local while you edit it.
+The initial presets are Tech Lead, Staff, Critic, Reporter, and Writer. They are editable starting points.
 With the initial scopes, "Are these changes good?" fits Critic and "What changed?" fits Reporter.
-No persona name or ID has special routing behavior.
+No preset name or ID has special routing behavior.
 
-Edit **Scope** to define when Auto should use a persona. Include its responsibility,
+Edit **Scope** to define when Auto should use a preset. Include its responsibility,
 examples, and limits. The full scope stays visible in a multiline field.
-Auto sends the complete scope of each enabled persona to Jev or Laya.
-The limits are 240 characters for each scope and 32 personas. Names and IDs do not influence selection.
+Auto sends the complete scope of each enabled preset to Jev or Laya.
+The limits are 240 characters for each scope and 32 presets. Names and IDs do not influence selection.
 Instructions, model, provider, and reasoning settings do not influence role selection.
 Edit **Instructions** to tell the selected model how to work.
 
-**Used for** assigns each persona to fixed task types: Review, Implement, Design,
+**Used for** assigns each preset to fixed task types: Review, Implement, Design,
 Report, Write, or Other. When you stop editing a Scope, the settings screen asks
 the configured classifier to detect the type. Select types to set them manually.
-Use **Detect from scope** to return to detection. A persona with an edited scope
+Use **Detect from scope** to return to detection. A preset with an edited scope
 and no current detection is untagged and competes for every task type.
 
 Set **Task depth** to the most demanding work the configured setup can handle:
@@ -159,36 +169,36 @@ Light, Standard, Deep, or Expert. Jev/Laya estimates the required depth from the
 request, recent context, and aggregate workspace change counts. A short question
 about a large change can require a deep review. Size alone does not imply difficulty.
 This field is separate from the provider's **Reasoning effort** setting.
-Review task depth when changing a persona's model. The plugin does not infer model capability.
+Review task depth when changing a preset's model. The plugin does not infer model capability.
 
 For each message, Jev/Laya also chooses one task type. Auto compares scopes only
-among the personas used for that type and untagged personas. A higher scope score
-cannot send a review to a writing persona. When no persona is used for the type,
-all personas compete and the turn summary reports that. Other never reports it.
-Auto selects the highest scope score among those personas that support the required depth.
+among the presets used for that type and untagged presets. A higher scope score
+cannot send a review to a writing preset. When no preset is used for the type,
+all presets compete and the turn summary reports that. Other never reports it.
+Auto selects the highest scope score among those presets that support the required depth.
 When none supports it, Auto uses the deepest available setup and reports that limit.
 Low scores do not block short or generic messages such as "testing" or "hello".
-Equal scores prefer the lowest sufficient depth, then stable persona ID order.
-If no enabled persona has a scope, Auto asks you to configure one or choose manually.
-Leave a scope empty to make that persona available only for manual selection.
-Disabled or deleted personas are excluded. Manual selection takes priority.
-Default and custom personas use the same selection rules, including after renaming.
+Equal scores prefer the lowest sufficient depth, then stable preset ID order.
+If no enabled preset has a scope, Auto asks you to configure one or choose manually.
+Leave a scope empty to make that preset available only for manual selection.
+Disabled or deleted presets are excluded. Manual selection takes priority.
+Default and custom presets use the same selection rules, including after renaming.
 Previous routing thresholds no longer apply.
 
 Use **Restore** to add deleted defaults back.
-This action keeps your existing personas and their settings.
-Saving settings does not restore deleted personas.
+This action keeps your existing presets and their settings.
+Saving settings does not restore deleted presets.
 
-The selected persona supplies its provider, model, effort, work mode, and instructions.
+The selected preset supplies its provider, model, effort, work mode, and instructions.
 The classifier still controls intent and automatic Plan and Fast decisions.
-It cannot change the persona's instructions or grant Full access.
-Persona scopes are classification data. They do not authorize edits or enable Plan.
-Each started turn shows one compact notice with the selected persona, model,
+It cannot change the preset's instructions or grant Full access.
+Preset scopes are classification data. They do not authorize edits or enable Plan.
+Each started turn shows one compact notice with the selected preset, model,
 intent, required task depth, mode, and reasoning setting. Any capability fallback appears in that notice.
-Old model and effort settings migrate to the built-in personas on load.
-Existing persona settings take priority after migration.
-The new task-depth field starts from the preset value for existing default personas.
-Other existing personas start at Standard. All values remain editable.
+Old model and effort settings migrate to the built-in presets on load.
+Existing preset settings take priority after migration.
+The new task-depth field starts from the built-in value for existing default presets.
+Other existing presets start at Standard. All values remain editable.
 
 Workspace context contains only counts of changed files, added and removed lines,
 binary files, and untracked files. It covers uncommitted changes against HEAD.
@@ -214,20 +224,20 @@ Reasoning effort is hidden when the selected model has no reasoning options.
 | OpenCode | Published work and planning modes | Native permission options; Plan takes priority |
 | Other installed providers | Published modes, or the provider's defaults when modes are unavailable | Published bypass mode when supported; otherwise normal approvals |
 
-The persona's **Work mode** can override the automatic work-mode choice.
+The preset's **Work mode** can override the automatic work-mode choice.
 It lists ordinary work modes. Plan and bypass are controlled by the conversation.
 The field is hidden when the provider publishes no work modes.
 Codex offers Default Permissions and Auto-review. Its Automatic choice uses Auto-review.
 Default Permissions sends approval requests to the user. Intent still limits the sandbox.
 Discussion and review do not enable Plan by themselves.
-With Plan off, native providers use the persona's work mode.
+With Plan off, native providers use the preset's work mode.
 Under automatic approvals, discussion and review receive no-edit instructions.
 These modes retain each provider's own permission semantics.
 They do not imply a shared operating-system sandbox.
 When Plan is requested but unsupported, the plugin uses normal approvals and instructions
 to analyze without edits. The turn notice explains this limitation.
 Native provider options are documented in [Paseo provider options](https://paseo.sh/docs/sdk/provider-options).
-Unknown models stop the turn and direct you to the persona settings.
+Unknown models stop the turn and direct you to the preset settings.
 An unavailable reasoning setting uses the model default.
 Fast uses the model's published Fast feature when supported.
 Otherwise, execution continues at normal speed. The turn notice explains these fallbacks.
@@ -243,9 +253,9 @@ A switch back to Codex includes the bounded conversation handoff.
 
 ## Composer controls
 
-Select **Auto Mode for Paseo** as the provider. Select Auto or a persona in the
-conversation. A manual persona applies to the next successful turn by default.
-Select **Keep selected persona** to use it for later turns.
+Select **Auto Mode for Paseo** as the provider. Select Auto or a preset in the
+conversation. A manual preset applies to the next successful turn by default.
+Select **Keep selected preset** to use it for later turns.
 
 The mode control has three options:
 
@@ -254,7 +264,7 @@ The mode control has three options:
 - **Plan only** requests analysis without edits and uses the provider's planning mode when available.
 
 The mode icons identify automatic choice, work, and planning.
-Modes do not select a persona or grant Full access. Use the separate controls for those choices.
+Modes do not select a preset or grant Full access. Use the separate controls for those choices.
 
 The Fast control has three options:
 
@@ -284,8 +294,8 @@ Laya processes it in a local Python process:
 - Up to 1,000 characters from each recent item.
 
 The plugin does not send tool output or private reasoning to either classifier. The
-plugin stores the short routing context in Paseo session data. It can rebuild
-this context from the local Codex history.
+plugin stores the short routing context in Paseo session data. For a chat with
+a Codex thread, it can also rebuild this context from the local Codex history.
 
 The plugin stores a TypeSafe API key in
 `~/.paseo/auto-mode-for-paseo.local.json` as plain text. A key in this file has
@@ -304,7 +314,7 @@ Provider authentication stays in Paseo and the installed provider CLI.
 The plugin does not request vendor API keys.
 
 With automatic approvals, discussion and review request analysis without edits.
-Plan is a separate decision. Native execution uses the persona's work mode when
+Plan is a separate decision. Native execution uses the preset's work mode when
 Plan is off. Codex enforces intent through its sandbox. Other providers enforce
 their native permissions as described above. No-edit instructions do not add a sandbox.
 Unknown intent values and invalid scores stop the turn.
@@ -378,6 +388,9 @@ paseo plugin reload auto-mode-for-paseo
 
 ## References
 
+- [Paseo](https://github.com/getpaseo/paseo)
+- [Paseo provider options](https://paseo.sh/docs/sdk/provider-options)
+- [Laya](https://github.com/NandhaKishorM/laya)
 - [Codex App Server](https://developers.openai.com/codex/app-server)
 - [Codex Auto-review](https://developers.openai.com/codex/sandboxing/auto-review)
 - [Codex speed settings](https://developers.openai.com/codex/speed)
