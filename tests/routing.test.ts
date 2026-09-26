@@ -7,31 +7,31 @@ import { defaults } from "../shared/settings";
 import { answers, wireAnswers } from "./fixtures";
 import { parseWorkspaceState } from "../server/workspace-state";
 
-test("Auto uses editable scope fit for every persona without changing permissions", async (t) => {
-  const settings = { ...defaults, apiKey: "test-key", personas: defaults.personas.map((persona) => persona.id === "writer"
-    ? { ...persona, name: "My reviewer", description: "Assess code quality and correctness. Review existing changes without edits.", provider: "claude", model: "configured-model", effort: "medium" }
-    : { ...persona }) };
+test("Auto uses editable scope fit for every preset without changing permissions", async (t) => {
+  const settings = { ...defaults, apiKey: "test-key", presets: defaults.presets.map((preset) => preset.id === "writer"
+    ? { ...preset, name: "My reviewer", description: "Assess code quality and correctness. Review existing changes without edits.", provider: "claude", model: "configured-model", effort: "medium" }
+    : { ...preset }) };
   let winner = "writer";
   t.mock.method(globalThis, "fetch", async (...[_url, init]: Parameters<typeof fetch>) => {
     const request = JSON.parse(String(init?.body));
     assert.equal("lane" in request.questions, false);
-    if (request.questions.persona_0) assert.ok(JSON.stringify(request.questions).includes(settings.personas.find((persona) => persona.id === "writer")!.description));
+    if (request.questions.preset_0) assert.ok(JSON.stringify(request.questions).includes(settings.presets.find((preset) => preset.id === "writer")!.description));
     return Response.json({ answers: wireAnswers(answers({
       intent: { type: "choice", choice: "review", probabilities: { review: 1 }, confidence: 1 },
-      personaScores: { [winner]: 0.95 },
-    }), settings.personas) });
+      presetScores: { [winner]: 0.95 },
+    }), settings.presets) });
   });
   const route = await routePrompt("Are the current changes good?", [], settings);
-  assert.equal(route.personaId, "writer");
+  assert.equal(route.presetId, "writer");
   assert.equal(route.provider, "claude");
   assert.equal(route.model, "configured-model");
   assert.equal(route.effort, "medium");
   assert.equal(route.intent, "review");
   assert.equal(route.plan, false);
   winner = "critic";
-  assert.equal((await routePrompt("Review", [], settings, "writer")).personaId, "writer");
-  settings.personas.find((persona) => persona.id === "critic")!.enabled = false;
-  assert.notEqual((await routePrompt("Review", [], settings)).personaId, "critic");
+  assert.equal((await routePrompt("Review", [], settings, "writer")).presetId, "writer");
+  settings.presets.find((preset) => preset.id === "critic")!.enabled = false;
+  assert.notEqual((await routePrompt("Review", [], settings)).presetId, "critic");
 });
 
 test("intent, effort, and execution answers are validated before use", () => {
@@ -50,7 +50,7 @@ test("classification sends configured scopes without workspace or isolation ques
     assert.equal("isolated_worktree" in request.questions, false);
     assert.equal("intent" in request.questions, true);
     assert.equal("execution" in request.questions, true);
-    assert.equal("persona_0" in request.questions, true);
+    assert.equal("preset_0" in request.questions, true);
     return Response.json({ answers: wireAnswers() });
   });
   assert.deepEqual(await evaluateRoute({ apiKey: "test-key", model: "jev-latest", prompt: "Review the change" }), answers());

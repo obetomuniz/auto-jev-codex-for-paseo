@@ -17,13 +17,13 @@ the `main` branch. This policy will change when the project has stable releases.
 ## Security boundaries
 
 With Jev selected, the plugin sends message text and limited recent context to
-TypeSafe. Auto also sends each enabled persona's complete scope:
-at most 240 characters for each of 32 personas. Names and IDs are excluded.
+TypeSafe. Auto also sends each enabled preset's complete scope:
+at most 240 characters for each of 32 presets. Names and IDs are excluded.
 Execution instructions, provider settings, and credentials are excluded.
 Scopes cannot authorize edits or select Full access.
 The settings screen also sends a scope alone when it detects task types. This
 happens after you stop editing it, once for each scope text. Task types select
-personas only. They cannot authorize edits or select Full access.
+presets only. They cannot authorize edits or select Full access.
 The classifier also receives bounded aggregate counts of uncommitted changes.
 These counts include changed files, added and removed lines, binary files, and
 untracked files. No filenames, repository paths, file contents, or raw Git output

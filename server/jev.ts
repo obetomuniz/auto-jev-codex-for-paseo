@@ -1,7 +1,7 @@
 import { readContext, type ContextEntry } from "./route-context";
 import { ROUTE_QUESTIONS, parseRouteAnswers, type RouteAnswers } from "./classifier";
-import { personaQuestions } from "./persona-classification";
-import type { Persona, ProviderSettings } from "../shared/settings";
+import { presetQuestions } from "./preset-classification";
+import type { Preset, ProviderSettings } from "../shared/settings";
 import { workspaceStateSchema, type WorkspaceState } from "./workspace-state";
 
 const TYPESAFE_URL = "https://api.typesafe.ai/v1/systemone";
@@ -17,10 +17,10 @@ export async function evaluateRoute(input: {
   model: string;
   prompt: string;
   context?: ContextEntry[];
-  personas?: readonly Persona[];
+  presets?: readonly Preset[];
   workspace?: WorkspaceState;
 }): Promise<RouteAnswers> {
-  const roster = personaQuestions(input.personas);
+  const roster = presetQuestions(input.presets);
   const body = await askTypeSafe({
     apiKey: input.apiKey,
     model: input.model,

@@ -1,7 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { homedir } from "node:os";
-import { settingsSchema, type Persona } from "../shared/settings";
-import { personaQuestions } from "./persona-classification";
+import { settingsSchema, type Preset } from "../shared/settings";
+import { presetQuestions } from "./preset-classification";
 import { workspaceStateSchema, type WorkspaceState } from "./workspace-state";
 import { parseRouteAnswers, type RouteAnswers } from "./classifier";
 import { readContext, type ContextEntry } from "./route-context";
@@ -22,7 +22,7 @@ type LayaConfig = {
 type LayaInput = LayaConfig & {
   prompt: string;
   context?: ContextEntry[];
-  personas?: readonly Persona[];
+  presets?: readonly Preset[];
   workspace?: WorkspaceState;
 };
 type Pending = { resolve(value: unknown): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> };
@@ -131,7 +131,7 @@ export class LayaClassifier {
 
   evaluate(input: LayaInput): Promise<RouteAnswers> {
     if (typeof input.prompt !== "string" || input.prompt.length > LAYA_MAX_PROMPT_CHARS) return Promise.reject(new Error("Laya request exceeds 16,000 characters."));
-    const roster = personaQuestions(input.personas);
+    const roster = presetQuestions(input.presets);
     const recentConversation = readContext(input.context).map(({ role, text }) => ({ role, text }));
     const state = { request: input.prompt, ...(recentConversation.length ? { recentConversation } : {}) };
     const payload = JSON.stringify({ state, questions: { ...LAYA_QUESTIONS, ...roster.questions } });

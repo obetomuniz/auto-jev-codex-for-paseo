@@ -1,13 +1,13 @@
-import type { Persona } from "../shared/settings";
+import type { Preset } from "../shared/settings";
 import type { TaskType } from "../shared/task-types";
 
 export const DETECT_DELAY_MS = 800;
 export type DetectionState = { detecting: boolean; error?: string };
 
 /** Detected tags are stale when the scope changed since detection. */
-export function needsDetection(persona: Pick<Persona, "description" | "taskTypesAuto" | "taskTypesScope">): boolean {
-  const scope = persona.description.trim();
-  return persona.taskTypesAuto && scope.length > 0 && persona.taskTypesScope.trim() !== scope;
+export function needsDetection(preset: Pick<Preset, "description" | "taskTypesAuto" | "taskTypesScope">): boolean {
+  const scope = preset.description.trim();
+  return preset.taskTypesAuto && scope.length > 0 && preset.taskTypesScope.trim() !== scope;
 }
 
 /**
@@ -29,19 +29,19 @@ export class TaskTypeDetector {
     private readonly delay = DETECT_DELAY_MS,
   ) {}
 
-  update(personas: readonly Persona[]): void {
+  update(presets: readonly Preset[]): void {
     if (this.disposed) return;
-    const ids = new Set(personas.map((persona) => persona.id));
+    const ids = new Set(presets.map((preset) => preset.id));
     for (const id of new Set([...this.current.keys(), ...this.timers.keys(), ...this.attempted.keys()])) {
       if (!ids.has(id)) { this.clearTimer(id); this.current.delete(id); this.attempted.delete(id); this.errors.delete(id); }
     }
-    for (const persona of personas) {
-      const scope = persona.description.trim();
-      if (!needsDetection(persona)) { this.current.delete(persona.id); this.clearTimer(persona.id); continue; }
-      this.current.set(persona.id, scope);
-      if (this.timers.get(persona.id)?.scope !== scope) this.clearTimer(persona.id);
-      if (this.attempted.get(persona.id) === scope || this.timers.has(persona.id)) continue;
-      this.timers.set(persona.id, { scope, timer: setTimeout(() => { void this.run(persona.id, scope); }, this.delay) });
+    for (const preset of presets) {
+      const scope = preset.description.trim();
+      if (!needsDetection(preset)) { this.current.delete(preset.id); this.clearTimer(preset.id); continue; }
+      this.current.set(preset.id, scope);
+      if (this.timers.get(preset.id)?.scope !== scope) this.clearTimer(preset.id);
+      if (this.attempted.get(preset.id) === scope || this.timers.has(preset.id)) continue;
+      this.timers.set(preset.id, { scope, timer: setTimeout(() => { void this.run(preset.id, scope); }, this.delay) });
     }
     this.emit();
   }

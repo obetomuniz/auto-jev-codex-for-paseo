@@ -17,7 +17,7 @@ export const TASK_TYPE_CRITERIA: Record<TaskType, string> = {
 };
 
 export const detectTaskTypesRpc = defineRpc({
-  name: "personas.detect-task-types",
+  name: "presets.detect-task-types",
   input: z.object({ description: z.string().trim().max(240, "Use 240 characters or fewer.") }),
   output: z.object({ taskTypes: z.array(z.enum(TASK_TYPES)).max(TASK_TYPES.length) }),
 });

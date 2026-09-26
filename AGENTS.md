@@ -5,7 +5,7 @@ Use this file for automated changes in this repository.
 ## Scope
 
 Keep the plugin focused on one job. It classifies a new Paseo message and starts
-a configured persona's provider turn with explicit settings. Do not add an HTTP server, an MCP server,
+a configured preset's provider turn with explicit settings. Do not add an HTTP server, an MCP server,
 or a second session store.
 
 ## Safety rules

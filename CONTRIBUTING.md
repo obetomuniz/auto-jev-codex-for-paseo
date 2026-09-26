@@ -7,7 +7,7 @@ Thank you for your interest in Auto Mode for Paseo.
 Open an issue for a large behavior change. Explain the user problem and the
 expected result. You can send a small fix without an issue.
 
-Do not include credentials, private prompts, chat logs, or personal data in an
+Do not include credentials, private prompts, chat logs, or presetl data in an
 issue, test, commit, or pull request.
 
 ## Set up the project

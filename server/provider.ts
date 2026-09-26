@@ -106,7 +106,7 @@ export function createAutoModeProvider(paseo?: PaseoAccess): ProviderRegistratio
   return {
     id: PROVIDER_ID,
     label: "Auto Mode for Paseo",
-    description: "Route each turn to a configured persona and its provider.",
+    description: "Route each turn to a configured preset and its provider.",
     async connect(request) {
       return new AutoModeConnection(
         negotiateProviderCapabilities(request.capabilities, SUPPORTED_CAPABILITIES), paseo,
@@ -191,7 +191,7 @@ class AutoModeConnection implements ProviderConnection {
     }
     const saved = asRecord(input.persistence?.data);
     const requestedModel = input.config.model ?? stringValue(saved?.selectedModel) ?? MODEL_ID;
-    const selectedModel = await normalizePersonaSelection(requestedModel);
+    const selectedModel = await normalizePresetSelection(requestedModel);
     const mode = input.config.mode ?? stringValue(saved?.mode) ?? "auto";
     const models = await modelCatalog();
     let controls: Controls;
@@ -282,7 +282,7 @@ class AutoModeConnection implements ProviderConnection {
       if (!session || session.closed || session.starting) throw new Error("Wait for the pending turn to start before changing settings.");
       const models = await modelCatalog();
       if (session.closed || session.starting) throw new Error("Session changed while loading configuration; try again.");
-      const model = input.changes.model === undefined ? session.selectedModel : await normalizePersonaSelection(input.changes.model ?? MODEL_ID);
+      const model = input.changes.model === undefined ? session.selectedModel : await normalizePresetSelection(input.changes.model ?? MODEL_ID);
       const mode = input.changes.mode === undefined ? session.mode : input.changes.mode ?? "auto";
       if (!models.some((item) => item.id === model) || (mode !== "auto" && mode !== "default" && mode !== "plan") || input.changes.thinkingOption !== undefined) {
         throw new Error("Choose a configured model and a supported collaboration mode.");
@@ -388,9 +388,9 @@ class AutoModeConnection implements ProviderConnection {
       if (session.closed || session.generation !== generation) throw new Error("Turn canceled during workspace assessment.");
       const route = await routePrompt(message.routeText, session.routingContext, settings, manual ? session.selectedModel : undefined, workspace);
       if (session.closed || session.generation !== generation) throw new Error("Turn canceled during classification.");
-      const persona = settings.personas.find((item) => item.id === route.personaId)!;
-      const model = persona.model;
-      const effort = persona.effort;
+      const preset = settings.presets.find((item) => item.id === route.presetId)!;
+      const model = preset.model;
+      const effort = preset.effort;
       const plan = session.mode === "plan" || (session.mode === "auto" && route.plan);
       const fast = session.controls.fast === "on" || (session.controls.fast === "auto" && route.fast);
       const models = await modelCatalog();
@@ -399,7 +399,7 @@ class AutoModeConnection implements ProviderConnection {
       await session.native?.close();
       session.native = null;
       if (session.closed || session.generation !== generation) throw new Error("Turn canceled before provider startup.");
-      if (persona.provider !== "codex") {
+      if (preset.provider !== "codex") {
         if (!this.paseo) throw new Error("The Paseo host API is not available for this session.");
         await session.codex?.close();
         session.codex = null;
@@ -417,14 +417,14 @@ class AutoModeConnection implements ProviderConnection {
         });
         session.native = execution;
         await execution.start({
-          config: session.config, persona, manual, taskDepth: route.taskDepth, taskType: manual ? undefined : route.taskType, notices: route.notices,
-          policy: { provider: persona.provider, intent: route.intent, plan, fast, cwd: session.config.cwd, fullAccess: session.controls.permissions === "full-access" },
+          config: session.config, preset, manual, taskDepth: route.taskDepth, taskType: manual ? undefined : route.taskType, notices: route.notices,
+          policy: { provider: preset.provider, intent: route.intent, plan, fast, cwd: session.config.cwd, fullAccess: session.controls.permissions === "full-access" },
           context: session.handoffContext, text: message.displayText,
           images: prompt.input.content.filter((part): part is ComposerImageContent => part.type === "image").map(({ data, mimeType }) => ({ data, mimeType })),
           clientMessageId: prompt.clientMessageId,
           accepted: () => {
             session.activeTurnId = execution.turnId;
-            session.lastProvider = persona.provider;
+            session.lastProvider = preset.provider;
             this.remember(session, { id: prompt.clientMessageId, role: "user", text: message.contextText });
             if (manual && session.controls.modelScope === "next-turn") {
               session.selectedModel = MODEL_ID;
@@ -448,7 +448,7 @@ class AutoModeConnection implements ProviderConnection {
         text: message.contextText,
       });
       const modeLabel = plan ? "Plan" : session.controls.permissions === "full-access" ? "Full access"
-        : persona.workMode === "auto" ? "Default Permissions" : "Auto-review";
+        : preset.workMode === "auto" ? "Default Permissions" : "Auto-review";
       const response = await codex.request<{ turn: AppServerTurn }>("turn/start", {
         threadId: session.threadId,
         clientUserMessageId: prompt.clientMessageId,
@@ -459,13 +459,13 @@ class AutoModeConnection implements ProviderConnection {
           : session.controls.permissions === "full-access" ? { type: "dangerFullAccess" }
           : sandboxForIntent(route.intent, session.config.cwd),
         approvalPolicy: session.controls.permissions === "full-access" && !plan ? "never" : "on-request",
-        // Send both values explicitly so switching personas cannot retain the
+        // Send both values explicitly so switching presets cannot retain the
         // preceding turn's auto-reviewer when Default Permissions is selected.
-        approvalsReviewer: persona.workMode === "auto" ? "user" : "auto_review",
+        approvalsReviewer: preset.workMode === "auto" ? "user" : "auto_review",
         serviceTier: fast ? "fast" : "default",
         collaborationMode: {
           mode: plan ? "plan" : "default",
-          settings: { model, reasoning_effort: effort || null, developer_instructions: persona.instructions || null },
+          settings: { model, reasoning_effort: effort || null, developer_instructions: preset.instructions || null },
         },
       }).catch((error) => {
         session.routingContext = previousContext;
@@ -492,7 +492,7 @@ class AutoModeConnection implements ProviderConnection {
       });
       this.emit({ type: "session.turn", sessionId, turnId, state: "started" });
       this.emitTimeline(sessionId, { type: "notification", id: `auto-route:${prompt.clientMessageId}`, level: "info",
-        message: executionNotice({ persona, intent: route.intent, manual, effort, fast, modeLabel, taskDepth: route.taskDepth, taskType: manual ? undefined : route.taskType, notices: route.notices }),
+        message: executionNotice({ preset, intent: route.intent, manual, effort, fast, modeLabel, taskDepth: route.taskDepth, taskType: manual ? undefined : route.taskType, notices: route.notices }),
       });
       for (const event of session.deferredTurns.splice(0)) this.emit(event);
       // Stop can arrive before turn/start returns the ID needed by Codex.
@@ -914,18 +914,18 @@ class AutoModeConnection implements ProviderConnection {
 
 async function modelCatalog() {
   const settings = await loadSettings();
-  const personas = settings.personas.filter((persona) => persona.enabled);
-  return [autoModel(), ...personas.map((persona) => ({
-    id: persona.id, label: persona.name, description: persona.description, isDefault: false,
+  const presets = settings.presets.filter((preset) => preset.enabled);
+  return [autoModel(), ...presets.map((preset) => ({
+    id: preset.id, label: preset.name, description: preset.description, isDefault: false,
   }))];
 }
 
-async function normalizePersonaSelection(value: string): Promise<string> {
+async function normalizePresetSelection(value: string): Promise<string> {
   if (value === "auto-jev-codex-for-paseo" || value === MODEL_ID) return MODEL_ID;
   const settings = await loadSettings();
-  const direct = settings.personas.find((persona) => persona.id === value);
+  const direct = settings.presets.find((preset) => preset.id === value);
   if (direct) return direct.id;
-  const legacy = settings.personas.find((persona) => persona.model === value);
+  const legacy = settings.presets.find((preset) => preset.model === value);
   return legacy?.id ?? value;
 }
 
@@ -933,7 +933,7 @@ function autoModel() {
   return {
     id: MODEL_ID,
     label: "Auto Mode for Paseo",
-    description: "The classifier chooses a configured persona before every new turn.",
+    description: "The classifier chooses a configured preset before every new turn.",
     isDefault: true,
   };
 }

@@ -1,4 +1,4 @@
-import { personaSchema, type ProviderSettings } from "../shared/settings";
+import { presetSchema, type ProviderSettings } from "../shared/settings";
 import { TASK_TYPES, TASK_TYPE_CRITERIA, type TaskType } from "../shared/task-types";
 import { askTypeSafe, typeSafeKey } from "./jev";
 import { askLaya } from "./laya";
@@ -9,8 +9,8 @@ export const SCOPE_TYPE_QUESTIONS = {
     taskType: {
       type: "choice" as const,
       instructions: {
-        question: "What kind of work does this persona scope describe?",
-        focus: "The scope tells an assistant router when to use this persona. Choose the main kind of work it covers.",
+        question: "What kind of work does this preset scope describe?",
+        focus: "The scope tells an assistant router when to use this preset. Choose the main kind of work it covers.",
       },
       criteria: TASK_TYPE_CRITERIA,
     },
@@ -18,7 +18,7 @@ export const SCOPE_TYPE_QUESTIONS = {
   laya: {
     taskType: {
       type: "choice",
-      instructions: "The scope tells a router when to use this persona. What kind of work does it mainly cover?",
+      instructions: "The scope tells a router when to use this preset. What kind of work does it mainly cover?",
       criteria: TASK_TYPE_CRITERIA,
     },
   },
@@ -26,7 +26,7 @@ export const SCOPE_TYPE_QUESTIONS = {
 
 /** Tags one scope with the configured classifier. Only the scope text leaves the plugin. */
 export async function detectTaskTypes(description: string, settings: ProviderSettings): Promise<TaskType[]> {
-  const scope = personaSchema.shape.description.parse(description);
+  const scope = presetSchema.shape.description.parse(description);
   if (!scope) return [];
   const state = { scope };
   const body = settings.classifier === "laya"

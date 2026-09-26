@@ -1,87 +1,87 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { defaults, settingsSchema, MAX_PERSONAS } from "../shared/settings";
-import { restoreDefaultPersonas, selectPersona } from "../shared/personas";
+import { defaults, settingsSchema, MAX_PRESETS } from "../shared/settings";
+import { restoreDefaultPresets, selectPreset } from "../shared/presets";
 import { parseStoredSettings } from "../server/settings-store";
 import { parseQuestions, questionAnswers, MAX_QUESTIONS } from "../server/questions";
 import { nativePolicy, type ExecutionPolicy } from "../server/provider-policy";
 import { appendHandoff, handoffPrompt, readHandoff, HANDOFF_MESSAGES, HANDOFF_TEXT_LIMIT } from "../server/handoff";
 import type { ContextEntry } from "../server/route-context";
 
-test("old model and effort overrides migrate once to the five personas", () => {
+test("old model and effort overrides migrate once to the five presets", () => {
   const settings = parseStoredSettings({ autoCodexModelLead: "future-model", autoCodexEffortLead: "future-effort" });
-  const lead = selectPersona(settings, "tech-lead");
+  const lead = selectPreset(settings, "tech-lead");
   assert.equal(lead.model, "future-model");
   assert.equal(lead.effort, "future-effort");
   assert.equal(lead.provider, "codex");
   lead.model = "newer-model";
-  assert.equal(selectPersona(parseStoredSettings(settings), "tech-lead").model, "newer-model");
+  assert.equal(selectPreset(parseStoredSettings(settings), "tech-lead").model, "newer-model");
 });
 
 test("default roles and manual selection keep stable IDs", () => {
-  const custom = { ...defaults.personas[0], id: "editor", name: "Editor", provider: "opencode", model: "vendor/new-model", effort: "deep" };
-  const settings = settingsSchema.parse({ ...defaults, personas: [...defaults.personas, custom] });
-  for (const persona of settings.personas) assert.equal(selectPersona(settings, persona.id).id, persona.id);
-  assert.equal(selectPersona(settings, custom.id).provider, "opencode");
-  settings.personas.find((persona) => persona.id === "tech-lead")!.enabled = false;
-  assert.throws(() => selectPersona(settings, "tech-lead"), /disabled/);
-  assert.equal(selectPersona(settings, "editor").id, "editor");
+  const custom = { ...defaults.presets[0], id: "editor", name: "Editor", provider: "opencode", model: "vendor/new-model", effort: "deep" };
+  const settings = settingsSchema.parse({ ...defaults, presets: [...defaults.presets, custom] });
+  for (const preset of settings.presets) assert.equal(selectPreset(settings, preset.id).id, preset.id);
+  assert.equal(selectPreset(settings, custom.id).provider, "opencode");
+  settings.presets.find((preset) => preset.id === "tech-lead")!.enabled = false;
+  assert.throws(() => selectPreset(settings, "tech-lead"), /disabled/);
+  assert.equal(selectPreset(settings, "editor").id, "editor");
 });
 
-test("persona validation rejects recursion, duplicate IDs, and unbounded input", () => {
+test("preset validation rejects recursion, duplicate IDs, and unbounded input", () => {
   for (const change of [
     { id: "auto-mode-for-paseo" }, { provider: "auto-mode-for-paseo" }, { provider: "vendor/model" },
     { instructions: "x".repeat(8_001) }, { name: " " }, { model: " " },
-  ]) assert.throws(() => settingsSchema.parse({ ...defaults, personas: [...defaults.personas, { ...defaults.personas[0], ...change }] }));
-  assert.throws(() => settingsSchema.parse({ personas: Array.from({ length: MAX_PERSONAS + 1 }, (_, i) => ({ ...defaults.personas[0], id: `custom-${i}` })) }));
-  assert.equal(settingsSchema.parse({ personas: defaults.personas.map((persona) => ({ ...persona, effort: "" })) }).personas[0].effort, "");
+  ]) assert.throws(() => settingsSchema.parse({ ...defaults, presets: [...defaults.presets, { ...defaults.presets[0], ...change }] }));
+  assert.throws(() => settingsSchema.parse({ presets: Array.from({ length: MAX_PRESETS + 1 }, (_, i) => ({ ...defaults.presets[0], id: `custom-${i}` })) }));
+  assert.equal(settingsSchema.parse({ presets: defaults.presets.map((preset) => ({ ...preset, effort: "" })) }).presets[0].effort, "");
 });
 
-test("removed default roles stay absent and require an explicit matched persona ID", () => {
-  const settings = settingsSchema.parse({ personas: [{ ...defaults.personas[0], id: "editor", name: "Editor" }] });
-  for (const { id } of defaults.personas) {
-    assert.throws(() => selectPersona(settings, id), /missing.*restore/);
+test("removed default roles stay absent and require an explicit matched preset ID", () => {
+  const settings = settingsSchema.parse({ presets: [{ ...defaults.presets[0], id: "editor", name: "Editor" }] });
+  for (const { id } of defaults.presets) {
+    assert.throws(() => selectPreset(settings, id), /missing.*restore/);
   }
-  assert.throws(() => selectPersona(settings, "tech-lead"), /missing/);
-  assert.equal(selectPersona(settings, "editor").id, "editor");
-  assert.deepEqual(parseStoredSettings(settings).personas, settings.personas);
-  assert.deepEqual(parseStoredSettings({ personas: [] }).personas, []);
+  assert.throws(() => selectPreset(settings, "tech-lead"), /missing/);
+  assert.equal(selectPreset(settings, "editor").id, "editor");
+  assert.deepEqual(parseStoredSettings(settings).presets, settings.presets);
+  assert.deepEqual(parseStoredSettings({ presets: [] }).presets, []);
   // The old internal manual-only flag is obsolete. Preserve the user's definition.
-  const legacy = { ...settings.personas[0], automatic: false };
-  assert.deepEqual(parseStoredSettings({ personas: [legacy] }).personas, settings.personas);
+  const legacy = { ...settings.presets[0], automatic: false };
+  assert.deepEqual(parseStoredSettings({ presets: [legacy] }).presets, settings.presets);
 });
 
-test("restoring defaults adds only missing personas and respects the limit", () => {
-  const edited = { ...defaults.personas[0], name: "My lead", model: "my-model", enabled: false };
+test("restoring defaults adds only missing presets and respects the limit", () => {
+  const edited = { ...defaults.presets[0], name: "My lead", model: "my-model", enabled: false };
   const custom = { ...edited, id: "editor" };
-  const restored = restoreDefaultPersonas([edited, custom]);
+  const restored = restoreDefaultPresets([edited, custom]);
   assert.deepEqual(restored.slice(0, 2), [edited, custom]);
-  assert.deepEqual(restored.slice(2), defaults.personas.slice(1));
-  assert.deepEqual(restoreDefaultPersonas(restored), restored);
-  const all = restoreDefaultPersonas([]);
-  assert.deepEqual(all, defaults.personas);
+  assert.deepEqual(restored.slice(2), defaults.presets.slice(1));
+  assert.deepEqual(restoreDefaultPresets(restored), restored);
+  const all = restoreDefaultPresets([]);
+  assert.deepEqual(all, defaults.presets);
   all[0].name = "Changed after restoring";
-  assert.notEqual(defaults.personas[0].name, all[0].name);
-  const full = Array.from({ length: MAX_PERSONAS }, (_, i) => ({ ...custom, id: `custom-${i}` }));
-  assert.throws(() => restoreDefaultPersonas(full), /limit is 32/);
+  assert.notEqual(defaults.presets[0].name, all[0].name);
+  const full = Array.from({ length: MAX_PRESETS }, (_, i) => ({ ...custom, id: `custom-${i}` }));
+  assert.throws(() => restoreDefaultPresets(full), /limit is 32/);
 });
 
-test("scope migration upgrades only untouched presets and preserves user definitions and providers", () => {
-  const personas = [
-    { ...defaults.personas[4], description: "Bounded explanations and routine implementation.", provider: "claude", model: "my-model" },
-    { ...defaults.personas[2], description: "My specialized review scope." },
-    { ...defaults.personas[0], id: "custom", description: "Complex implementation and investigation." },
-    { ...defaults.personas[0], id: "constructor", description: "A custom scope." },
+test("scope migration upgrades only untouched defaults and preserves user definitions and providers", () => {
+  const presets = [
+    { ...defaults.presets[4], description: "Bounded explanations and routine implementation.", provider: "claude", model: "my-model" },
+    { ...defaults.presets[2], description: "My specialized review scope." },
+    { ...defaults.presets[0], id: "custom", description: "Complex implementation and investigation." },
+    { ...defaults.presets[0], id: "constructor", description: "A custom scope." },
   ];
-  const settings = parseStoredSettings({ personas, thresholdStaff: 0.9, thresholdCheap: 0.8 });
-  assert.equal(settings.personas[0].description, defaults.personas[4].description);
-  assert.equal(settings.personas[0].provider, "claude");
-  assert.equal(settings.personas[0].model, "my-model");
-  assert.deepEqual(settings.personas.slice(1), personas.slice(1));
-  assert.equal("thresholdPersona" in parseStoredSettings({ ...settings, thresholdPersona: 0.9 }), false);
+  const settings = parseStoredSettings({ presets, thresholdStaff: 0.9, thresholdCheap: 0.8 });
+  assert.equal(settings.presets[0].description, defaults.presets[4].description);
+  assert.equal(settings.presets[0].provider, "claude");
+  assert.equal(settings.presets[0].model, "my-model");
+  assert.deepEqual(settings.presets.slice(1), presets.slice(1));
+  assert.equal("thresholdPreset" in parseStoredSettings({ ...settings, thresholdPreset: 0.9 }), false);
   assert.equal("thresholdStaff" in settings, false);
-  settings.personas[0].description = "Bounded explanations and routine implementation.";
-  assert.deepEqual(parseStoredSettings(settings).personas, settings.personas);
+  settings.presets[0].description = "Bounded explanations and routine implementation.";
+  assert.deepEqual(parseStoredSettings(settings).presets, settings.presets);
 });
 
 test("Paseo question forms preserve all answers by header, free text, and skips", () => {

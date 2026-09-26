@@ -3,20 +3,20 @@ import { test } from "node:test";
 import { SettingsAutosave, settingsForAutosave, type SaveState } from "../client/settings-autosave";
 import { defaults, toPublic, type ProviderSettings } from "../shared/settings";
 
-test("autosave isolates invalid fields and personas while saving valid changes and removals", () => {
+test("autosave isolates invalid fields and presets while saving valid changes and removals", () => {
   const previous = { ...defaults, apiKey: "" };
   const draft = { ...toPublic(previous), layaPython: "", model: "updated-classifier",
-    personas: [{ ...previous.personas[0], provider: "claude", model: "" },
-      { ...previous.personas[1], name: "Architect" }, { ...previous.personas[2], id: "custom-new", model: "" }],
+    presets: [{ ...previous.presets[0], provider: "claude", model: "" },
+      { ...previous.presets[1], name: "Architect" }, { ...previous.presets[2], id: "custom-new", model: "" }],
   };
   const saved = settingsForAutosave(draft, previous);
   assert.equal(saved.layaPython, previous.layaPython);
   assert.equal(saved.model, "updated-classifier");
-  assert.deepEqual(saved.personas[0], previous.personas[0]);
-  assert.equal(saved.personas[1].name, "Architect");
-  assert.equal(saved.personas.length, 2);
+  assert.deepEqual(saved.presets[0], previous.presets[0]);
+  assert.equal(saved.presets[1].name, "Architect");
+  assert.equal(saved.presets.length, 2);
   assert.equal(saved.apiKey, "");
-  assert.deepEqual(settingsForAutosave({ ...draft, personas: [] }, saved).personas, []);
+  assert.deepEqual(settingsForAutosave({ ...draft, presets: [] }, saved).presets, []);
 });
 
 test("typing coalesces into one write and flushing saves the latest value before leaving", async (t) => {

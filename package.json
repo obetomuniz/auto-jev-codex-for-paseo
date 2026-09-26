@@ -2,7 +2,7 @@
   "name": "auto-mode-for-paseo",
   "private": true,
   "version": "0.2.0",
-  "description": "Route Paseo messages to configurable personas and providers with Jev or local Laya.",
+  "description": "Route Paseo messages to configurable presets and providers with Jev or local Laya.",
   "license": "MIT",
   "repository": {
     "type": "git",

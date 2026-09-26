@@ -9,7 +9,7 @@ const scope = "Translate technical prose into Portuguese.";
 const answer = (choice: string) => ({ answers: { taskType: { type: "choice", choice, probabilities: { [choice]: 1 }, confidence: 1 } } });
 
 test("Jev scope detection sends only the scope and the fixed task-type question", async (t) => {
-  const settings = { ...defaults, apiKey: "secret-key", personas: [{ ...defaults.personas[0], instructions: "private instructions" }] };
+  const settings = { ...defaults, apiKey: "secret-key", presets: [{ ...defaults.presets[0], instructions: "private instructions" }] };
   const requests: { body: Record<string, unknown> }[] = [];
   let choice = "write";
   t.mock.method(globalThis, "fetch", async (...[_url, init]: Parameters<typeof fetch>) => {
@@ -20,7 +20,7 @@ test("Jev scope detection sends only the scope and the fixed task-type question"
   assert.deepEqual(requests[0].body.state, { scope });
   assert.deepEqual(requests[0].body.questions, JSON.parse(JSON.stringify(SCOPE_TYPE_QUESTIONS.jev)));
   const body = JSON.stringify(requests[0].body);
-  for (const value of ["secret-key", "private instructions", settings.personas[0].description]) assert.ok(!body.includes(value));
+  for (const value of ["secret-key", "private instructions", settings.presets[0].description]) assert.ok(!body.includes(value));
   choice = "invalid";
   await assert.rejects(detectTaskTypes(scope, settings), /unknown task type/);
   assert.deepEqual(await detectTaskTypes("   ", settings), []);

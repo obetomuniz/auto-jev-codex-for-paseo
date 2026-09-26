@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { DETECT_DELAY_MS, TaskTypeDetector, type DetectionState } from "../client/task-type-detection";
-import { defaults, type Persona } from "../shared/settings";
+import { defaults, type Preset } from "../shared/settings";
 import type { TaskType } from "../shared/task-types";
 
-const persona = (description: string, values: Partial<Persona> = {}): Persona =>
-  ({ ...defaults.personas[0], id: "custom", description, taskTypes: [], taskTypesAuto: true, taskTypesScope: "", ...values });
+const preset = (description: string, values: Partial<Preset> = {}): Preset =>
+  ({ ...defaults.presets[0], id: "custom", description, taskTypes: [], taskTypesAuto: true, taskTypesScope: "", ...values });
 const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
 
 function setup(t: import("node:test").TestContext, detect: (description: string) => Promise<TaskType[]>) {
@@ -21,34 +21,34 @@ function setup(t: import("node:test").TestContext, detect: (description: string)
 
 test("detection waits for the scope to settle and sends each scope once", async (t) => {
   const { detector, calls, detected, states } = setup(t, async () => ["write"]);
-  detector.update([persona("Trans")]);
+  detector.update([preset("Trans")]);
   assert.deepEqual(states(), { custom: { detecting: true } });
   t.mock.timers.tick(DETECT_DELAY_MS - 1);
-  detector.update([persona("Translate prose")]);
+  detector.update([preset("Translate prose")]);
   t.mock.timers.tick(DETECT_DELAY_MS - 1);
   assert.deepEqual(calls, []);
   t.mock.timers.tick(1);
   await flush();
   assert.deepEqual(calls, ["Translate prose"]);
   assert.deepEqual(detected, [["custom", "Translate prose", ["write"]]]);
-  detector.update([persona("Translate prose")]);
+  detector.update([preset("Translate prose")]);
   t.mock.timers.tick(DETECT_DELAY_MS);
   assert.deepEqual(calls, ["Translate prose"], "The same scope is not sent again.");
-  detector.update([persona("Translate prose", { taskTypes: ["write"], taskTypesScope: "Translate prose" })]);
+  detector.update([preset("Translate prose", { taskTypes: ["write"], taskTypesScope: "Translate prose" })]);
   assert.deepEqual(states(), {});
 });
 
 test("results for a changed scope are dropped and manual or empty scopes are never sent", async (t) => {
   let release!: (types: TaskType[]) => void;
   const { detector, calls, detected, states } = setup(t, () => new Promise((resolve) => { release = resolve; }));
-  detector.update([persona("Review code")]);
+  detector.update([preset("Review code")]);
   t.mock.timers.tick(DETECT_DELAY_MS);
-  detector.update([persona("Review code and docs")]);
+  detector.update([preset("Review code and docs")]);
   release(["review"]);
   await flush();
   assert.deepEqual(detected, []);
   assert.equal(states().custom.detecting, true, "The new scope is pending.");
-  detector.update([persona("Review code and docs", { taskTypesAuto: false, taskTypes: ["review"] }), { ...persona("   "), id: "empty" }]);
+  detector.update([preset("Review code and docs", { taskTypesAuto: false, taskTypes: ["review"] }), { ...preset("   "), id: "empty" }]);
   t.mock.timers.tick(DETECT_DELAY_MS);
   assert.deepEqual(calls, ["Review code"]);
   assert.deepEqual(states(), {});
@@ -57,16 +57,16 @@ test("results for a changed scope are dropped and manual or empty scopes are nev
 test("errors are shown for the failed scope and retry sends it again", async (t) => {
   let fail = true;
   const { detector, calls, detected, states } = setup(t, async () => { if (fail) throw new Error("TypeSafe 503"); return ["design"]; });
-  detector.update([persona("Choose architecture")]);
+  detector.update([preset("Choose architecture")]);
   t.mock.timers.tick(DETECT_DELAY_MS);
   await flush();
   assert.deepEqual(states(), { custom: { detecting: false, error: "TypeSafe 503" } });
-  detector.update([persona("Choose architecture")]);
+  detector.update([preset("Choose architecture")]);
   t.mock.timers.tick(DETECT_DELAY_MS);
   assert.equal(calls.length, 1, "A failed scope is not retried automatically.");
   fail = false;
   detector.retry("custom");
-  detector.update([persona("Choose architecture")]);
+  detector.update([preset("Choose architecture")]);
   t.mock.timers.tick(DETECT_DELAY_MS);
   await flush();
   assert.equal(calls.length, 2);

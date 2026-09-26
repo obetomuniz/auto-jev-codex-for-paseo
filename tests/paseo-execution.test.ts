@@ -10,7 +10,7 @@ import { answers, wireAnswers } from "./fixtures";
 import { CodexAppServer, type CodexNotification } from "../server/codex-app-server";
 
 const config = { cwd: process.cwd(), env: {}, mcpServers: {}, settings: {}, persist: true };
-const persona = { ...defaults.personas[0], provider: "claude", model: "vendor/model", effort: "deep", instructions: "Persona instructions." };
+const preset = { ...defaults.presets[0], provider: "claude", model: "vendor/model", effort: "deep", instructions: "Preset instructions." };
 const policy = { provider: "claude", intent: "implement" as const, plan: false, fast: false, fullAccess: true, cwd: config.cwd };
 const terminalEvents = [
   { type: "turn_failed", provider: "claude", error: "Provider failed" },
@@ -78,11 +78,11 @@ async function prompt(connection: ProviderConnection, id = "message", text = "Im
 }
 async function providerHarness(t: TestContext, fullAccess = true) {
   const fake = fakePaseo();
-  const settings = { ...defaults, apiKey: "test-key", personas: defaults.personas.map((item) => item.id === "tech-lead" ? { ...persona } : { ...item }) };
+  const settings = { ...defaults, apiKey: "test-key", presets: defaults.presets.map((item) => item.id === "tech-lead" ? { ...preset } : { ...item }) };
   t.mock.method(fs, "readFile", async () => JSON.stringify(settings));
   const classified: string[] = [];
   let classification = answers();
-  t.mock.method(globalThis, "fetch", async (_input: unknown, init?: RequestInit) => { classified.push(String(init?.body)); return Response.json({ answers: wireAnswers(classification, settings.personas) }); });
+  t.mock.method(globalThis, "fetch", async (_input: unknown, init?: RequestInit) => { classified.push(String(init?.body)); return Response.json({ answers: wireAnswers(classification, settings.presets) }); });
   const codexStart = t.mock.method(CodexAppServer.prototype, "start", async () => {});
   t.mock.method(CodexAppServer.prototype, "close", async () => {});
   const connection = await createAutoModeProvider(() => fake.api).connect({ versions: [1], capabilities: ["prompt.message", "permission", "session.persistence", "session.configure"] });
@@ -103,11 +103,11 @@ test("native execution validates the model, subscribes first, forwards images an
     fake.event({ type: "turn_completed", provider: "claude" });
   });
   let accepted = false;
-  await execution.start({ config, persona, policy, context: [{ id: "old", role: "user", text: "Keep CSV support" }], text: "Add JSON", images: [{ data: "AQID", mimeType: "image/png" }], clientMessageId: "message", accepted() { accepted = true; } });
+  await execution.start({ config, preset, policy, context: [{ id: "old", role: "user", text: "Keep CSV support" }], text: "Add JSON", images: [{ data: "AQID", mimeType: "image/png" }], clientMessageId: "message", accepted() { accepted = true; } });
   assert.equal(accepted, true);
   assert.equal(fake.creations[0].config.provider, "claude/vendor/model");
   assert.equal(fake.creations[0].config.thinkingOptionId, "deep");
-  assert.match(fake.creations[0].config.systemPrompt ?? "", /Persona instructions/);
+  assert.match(fake.creations[0].config.systemPrompt ?? "", /Preset instructions/);
   assert.match(fake.sends[0].text, /Keep CSV support/);
   assert.deepEqual(fake.sends[0].options?.images, [{ data: "AQID", mimeType: "image/png" }]);
   assert.deepEqual(events.map((event) => event.type === "session.turn" ? event.state : event.type), ["session.prompt_result", "started", "timeline.item", "timeline.item", "completed"]);
@@ -120,13 +120,13 @@ test("unavailable models and subscription failures never send a prompt", async (
   for (const override of [{ model: "missing" }]) {
     const fake = fakePaseo();
     const execution = new PaseoExecution(fake.api, "s", () => {});
-    await assert.rejects(execution.start({ config, persona: { ...persona, ...override }, policy, context: [], text: "Run", images: [], clientMessageId: "m", accepted() {} }), /not available/);
+    await assert.rejects(execution.start({ config, preset: { ...preset, ...override }, policy, context: [], text: "Run", images: [], clientMessageId: "m", accepted() {} }), /not available/);
     assert.equal(fake.creations.length, 0);
   }
   const fake = fakePaseo();
   fake.gateSubscription(Promise.reject(new Error("Subscription unavailable")));
   const execution = new PaseoExecution(fake.api, "s", () => {});
-  await assert.rejects(execution.start({ config, persona, policy, context: [], text: "Run", images: [], clientMessageId: "m", accepted() {} }), /Subscription unavailable/);
+  await assert.rejects(execution.start({ config, preset, policy, context: [], text: "Run", images: [], clientMessageId: "m", accepted() {} }), /Subscription unavailable/);
   assert.equal(fake.sends.length, 0);
   assert.equal(fake.archived, 1);
 });
@@ -138,7 +138,7 @@ test("optional reasoning and Fast settings use only current model capabilities",
       ? [{ type: "toggle", id: "fast_mode", label: "Fast", value: false }] : [] }));
     const events: ProviderEvent[] = [];
     const execution = new PaseoExecution(fake.api, "s", (event) => events.push(event));
-    await execution.start({ config, persona: { ...persona, effort: available ? "deep" : "retired" },
+    await execution.start({ config, preset: { ...preset, effort: available ? "deep" : "retired" },
       policy: { ...policy, fast: true, fullAccess: false }, context: [], text: "Run", images: [], clientMessageId: "m", accepted() {} });
     assert.deepEqual(fake.creations[0].config.featureValues, available ? { fast_mode: true } : {});
     assert.equal(fake.creations[0].config.thinkingOptionId, available ? "deep" : undefined);
@@ -154,14 +154,14 @@ test("Fast off overrides a provider's enabled Fast default", async (t) => {
   const fake = fakePaseo();
   t.mock.method(fake.api.providers, "listFeatures", async () => ({ features: [{ type: "toggle", id: "fast_mode", label: "Fast", value: true }] }));
   const execution = new PaseoExecution(fake.api, "s", () => {});
-  await execution.start({ config, persona, policy: { ...policy, fast: false }, context: [], text: "Run", images: [], clientMessageId: "m", accepted() {} });
+  await execution.start({ config, preset, policy: { ...policy, fast: false }, context: [], text: "Run", images: [], clientMessageId: "m", accepted() {} });
   assert.deepEqual(fake.creations[0].config.featureValues, { fast_mode: false });
   await execution.close();
 });
 
 test("native review and discussion honor classifier Plan and manual overrides independently of intent", async (t) => {
   const h = await providerHarness(t, false);
-  await h.connection.send({ type: "session.configure", sessionId: "s", requestId: "persona", changes: { model: "tech-lead", settings: { modelScope: "pinned" } } });
+  await h.connection.send({ type: "session.configure", sessionId: "s", requestId: "preset", changes: { model: "tech-lead", settings: { modelScope: "pinned" } } });
   const scenarios = [
     { intent: "review", plan: "off", mode: "auto", workMode: "", expected: "auto" },
     { intent: "discuss", plan: "off", mode: "auto", workMode: "", expected: "auto" },
@@ -171,7 +171,7 @@ test("native review and discussion honor classifier Plan and manual overrides in
     { intent: "review", plan: "off", mode: "auto", workMode: "default", expected: "default" },
   ] as const;
   for (const [index, scenario] of scenarios.entries()) {
-    h.settings.personas.find((item) => item.id === "tech-lead")!.workMode = scenario.workMode;
+    h.settings.presets.find((item) => item.id === "tech-lead")!.workMode = scenario.workMode;
     await h.connection.send({ type: "session.configure", sessionId: "s", requestId: `mode-${index}`, changes: { mode: scenario.mode } });
     h.classify(answers({
       intent: { type: "choice", choice: scenario.intent, confidence: 1, probabilities: { [scenario.intent]: 1 } },
@@ -194,12 +194,12 @@ test("native review and discussion honor classifier Plan and manual overrides in
 
 test("Auto review starts Critic and emits one notice with the applied native settings", async (t) => {
   const h = await providerHarness(t, false);
-  Object.assign(h.settings.personas.find((item) => item.id === "critic")!, {
-    ...persona, id: "critic", name: "My reviewer", instructions: "Check regressions in the diff.", workMode: "default", effort: "retired-effort",
+  Object.assign(h.settings.presets.find((item) => item.id === "critic")!, {
+    ...preset, id: "critic", name: "My reviewer", instructions: "Check regressions in the diff.", workMode: "default", effort: "retired-effort",
   });
   h.classify(answers({
     intent: { type: "choice", choice: "review", confidence: 1, probabilities: { review: 1 } },
-    personaScores: { critic: 1 },
+    presetScores: { critic: 1 },
   }));
   await prompt(h.connection, "review", "Actually, are the current changes good?");
   assert.equal(h.codexStart.mock.callCount(), 0);
@@ -222,7 +222,7 @@ test("cancel during native creation archives the idle agent without sending work
   let release!: () => void;
   fake.gateCreate(new Promise<void>((resolve) => { release = resolve; }));
   const execution = new PaseoExecution(fake.api, "s", () => {});
-  const pending = execution.start({ config, persona, policy, context: [], text: "Run", images: [], clientMessageId: "m", accepted() {} });
+  const pending = execution.start({ config, preset, policy, context: [], text: "Run", images: [], clientMessageId: "m", accepted() {} });
   await new Promise((resolve) => setImmediate(resolve));
   await execution.close();
   release();
@@ -239,7 +239,7 @@ test("a terminal event during subscription startup prevents prompt delivery", as
     const events: ProviderEvent[] = [];
     const execution = new PaseoExecution(fake.api, "s", (event) => events.push(event));
     let accepted = false;
-    const pending = execution.start({ config, persona, policy, context: [], text: "Run", images: [], clientMessageId: "m", accepted() { accepted = true; } });
+    const pending = execution.start({ config, preset, policy, context: [], text: "Run", images: [], clientMessageId: "m", accepted() { accepted = true; } });
     await new Promise((resolve) => setImmediate(resolve));
     fake.event(terminal);
     release();
@@ -257,7 +257,7 @@ test("terminal events resolve pending questions once and reject late answers", a
     const fake = fakePaseo();
     const events: ProviderEvent[] = [];
     const execution = new PaseoExecution(fake.api, "s", (event) => events.push(event));
-    await execution.start({ config, persona, policy, context: [], text: "Run", images: [], clientMessageId: "m", accepted() {} });
+    await execution.start({ config, preset, policy, context: [], text: "Run", images: [], clientMessageId: "m", accepted() {} });
     fake.event({ type: "permission_requested", provider: "claude", request: { id: "question", provider: "claude", kind: "question", name: "Question" } });
     const id = "paseo:native-1:question";
     assert.equal(execution.hasPermission(id), true);
@@ -279,7 +279,7 @@ test("native providers use their published work and plan modes without requiring
       for (const plan of [false, true]) {
         const fake = fakePaseo();
         const execution = new PaseoExecution(fake.api, "s", () => {});
-        await execution.start({ config, persona: { ...persona, provider }, policy: { ...policy, provider, fullAccess, plan }, context: [], text: "Run", images: [], clientMessageId: "m", accepted() {} });
+        await execution.start({ config, preset: { ...preset, provider }, policy: { ...policy, provider, fullAccess, plan }, context: [], text: "Run", images: [], clientMessageId: "m", accepted() {} });
         assert.equal(fake.creations[0].config.modeId, plan ? "plan" : fullAccess ? "bypassPermissions" : "auto");
         assert.equal(fake.sends.length, 1);
         if (plan) {
@@ -342,7 +342,7 @@ test("a native session persists context but cannot restore Full access", async (
 
 test("a provider with no mode catalog runs with its own defaults and receives planning instructions", async (t) => {
   const h = await providerHarness(t, false);
-  h.settings.personas.find((item) => item.id === "tech-lead")!.provider = "grok";
+  h.settings.presets.find((item) => item.id === "tech-lead")!.provider = "grok";
   t.mock.method(h.fake.api.providers, "listModes", async () => ({ modes: [] }));
   await prompt(h.connection, "work");
   assert.equal(h.fake.creations[0].config.provider, "grok/vendor/model");
@@ -412,23 +412,23 @@ test("switching from native execution back to Codex sends the conversation hando
     if (method === "thread/start") return { thread: { id: "codex-thread" } };
     return { turn: { id: "codex-turn" } };
   });
-  await h.connection.send({ type: "session.configure", sessionId: "s", requestId: "persona", changes: { model: "writer" } });
+  await h.connection.send({ type: "session.configure", sessionId: "s", requestId: "preset", changes: { model: "writer" } });
   await prompt(h.connection, "second", "Continue with the next change");
   assert.match(JSON.stringify(calls.find((call) => call.method === "turn/start")?.params), /Preserve the CSV contract/);
   notify({ method: "turn/completed", params: { threadId: "codex-thread", turn: { id: "codex-turn", status: "completed" } } });
 });
 
-test("invalid intent and manually selected disabled or removed personas never launch a provider", async (t) => {
+test("invalid intent and manually selected disabled or removed presets never launch a provider", async (t) => {
   const h = await providerHarness(t);
   h.classify(answers({ intent: { type: "choice", choice: "invalid", confidence: 1, probabilities: { invalid: 1 } } }));
   await prompt(h.connection);
   assert.equal(h.fake.creations.length, 0);
   h.classify(answers());
-  await h.connection.send({ type: "session.configure", sessionId: "s", requestId: "persona", changes: { model: "tech-lead" } });
-  h.settings.personas.find((item) => item.id === "tech-lead")!.enabled = false;
+  await h.connection.send({ type: "session.configure", sessionId: "s", requestId: "preset", changes: { model: "tech-lead" } });
+  h.settings.presets.find((item) => item.id === "tech-lead")!.enabled = false;
   await prompt(h.connection, "second");
   assert.equal(h.fake.creations.length, 0);
-  h.settings.personas = h.settings.personas.filter((item) => item.id !== "tech-lead");
+  h.settings.presets = h.settings.presets.filter((item) => item.id !== "tech-lead");
   await prompt(h.connection, "third");
   assert.equal(h.fake.creations.length, 0);
   assert.equal(h.codexStart.mock.callCount(), 0);

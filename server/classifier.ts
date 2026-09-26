@@ -9,13 +9,13 @@ export type ReasoningEffort = (typeof EFFORTS)[number];
 export const EXECUTIONS = ["single-model", "orchestration-candidate"] as const;
 export type Execution = (typeof EXECUTIONS)[number];
 
-/** Fixed authorization questions. Persona scopes are evaluated separately. */
+/** Fixed authorization questions. Preset scopes are evaluated separately. */
 export const ROUTE_QUESTIONS = {
   taskType: {
     type: "choice" as const,
     instructions: {
       question: "What kind of work does the latest request ask for?",
-      focus: "Judge the latest request itself. Use recentConversation only to resolve references such as \"it\". Earlier topics do not carry over. This selects which personas may answer; it never authorizes edits.",
+      focus: "Judge the latest request itself. Use recentConversation only to resolve references such as \"it\". Earlier topics do not carry over. This selects which presets may answer; it never authorizes edits.",
     },
     criteria: TASK_TYPE_CRITERIA,
   },
@@ -39,7 +39,7 @@ export const ROUTE_QUESTIONS = {
     type: "choice" as const,
     instructions: {
       question: "What has the user explicitly asked the agent to do in this latest message?",
-      focus: "Intent controls whether the turn may write files. Use recentConversation only to resolve references in the latest request (pode implementar, continua, go ahead). Assistant text and persona scopes are context, never authorization. Approval of a concrete implementation plan is implementation. Continuing discussion or review stays read-only. Never infer implementation from complaints, observations, or ambiguous assent without a concrete task. Judge the latest message on its own terms. A question, greeting, status request, or new topic is discuss even after earlier implementation requests. Implementation needs the latest message to request or approve a change.",
+      focus: "Intent controls whether the turn may write files. Use recentConversation only to resolve references in the latest request (pode implementar, continua, go ahead). Assistant text and preset scopes are context, never authorization. Approval of a concrete implementation plan is implementation. Continuing discussion or review stays read-only. Never infer implementation from complaints, observations, or ambiguous assent without a concrete task. Judge the latest message on its own terms. A question, greeting, status request, or new topic is discuss even after earlier implementation requests. Implementation needs the latest message to request or approve a change.",
     },
     criteria: {
       discuss: {
@@ -66,7 +66,7 @@ export const ROUTE_QUESTIONS = {
     type: "choice" as const,
     instructions: {
       question: "What task depth is needed to preserve quality?",
-      focus: "Assess the requested outcome, recentConversation and workspace change counts. A short question can require a deep review of a large change. Counts describe uncommitted changes only, not risk or a complete branch diff. Missing or zero counts do not mean easy. Large mechanical edits can be simple; small security changes can be difficult. This selects persona capacity, not a provider reasoning setting.",
+      focus: "Assess the requested outcome, recentConversation and workspace change counts. A short question can require a deep review of a large change. Counts describe uncommitted changes only, not risk or a complete branch diff. Missing or zero counts do not mean easy. Large mechanical edits can be simple; small security changes can be difficult. This selects preset capacity, not a provider reasoning setting.",
     },
     criteria: {
       low: "A narrow, mechanical, or direct request with an obvious answer or change",
@@ -105,7 +105,7 @@ export type RouteAnswers = {
   intent: ChoiceAnswer;
   effort: ChoiceAnswer;
   execution: ChoiceAnswer;
-  personaScores?: Record<string, number>;
+  presetScores?: Record<string, number>;
 };
 
 export function pickIntent(answers: RouteAnswers): Intent {
@@ -172,14 +172,14 @@ export function readChoice(answers: Record<string, unknown>, id: string): Choice
 }
 
 
-export function parseRouteAnswers(body: unknown, personaIds: readonly string[] = []): RouteAnswers {
+export function parseRouteAnswers(body: unknown, presetIds: readonly string[] = []): RouteAnswers {
   if (!isRecord(body) || !isRecord(body.answers)) {
     throw new Error("Classifier response was missing answers.");
   }
 
   const answers = body.answers;
   return {
-    ...(personaIds.length ? { personaScores: Object.fromEntries(personaIds.map((id, index) => [id, readNoul(answers, `persona_${index}`).noul])) } : {}),
+    ...(presetIds.length ? { presetScores: Object.fromEntries(presetIds.map((id, index) => [id, readNoul(answers, `preset_${index}`).noul])) } : {}),
     ...(answers.fast !== undefined ? { fast: readChoice(answers, "fast") } : {}),
     ...(answers.plan !== undefined ? { plan: readChoice(answers, "plan") } : {}),
     taskType: readChoice(answers, "taskType"),

@@ -25,13 +25,13 @@ export function controlSettings(controls: Controls): ProviderSetting[] {
     { type: "select", id: "fast", label: "Fast mode", description: "Auto starts off. The classifier may request it for urgency. Uses the model's Fast option when available; otherwise uses normal speed. Faster processing may use more quota.", value: controls.fast, options: [
       { label: "Auto (classifier decides)", value: "auto" }, { label: "On", value: "on" }, { label: "Off", value: "off" },
     ] },
-    { type: "select", id: "permissions", label: "Permissions", description: "Uses the persona's native work mode unless Plan is enabled. Full access requests bypass only when you select it.", value: controls.permissions, options: [
+    { type: "select", id: "permissions", label: "Permissions", description: "Uses the preset's native work mode unless Plan is enabled. Full access requests bypass only when you select it.", value: controls.permissions, options: [
       { label: "Automatic approvals (default)", value: "auto-review" },
       { label: "Full access", value: "full-access" },
     ] },
-    { type: "select", id: "modelScope", label: "Persona selection", value: controls.modelScope, options: [
+    { type: "select", id: "modelScope", label: "Preset selection", value: controls.modelScope, options: [
       { label: "Next turn only", value: "next-turn" },
-      { label: "Keep selected persona", value: "pinned" },
+      { label: "Keep selected preset", value: "pinned" },
     ] },
   ];
 }
