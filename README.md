@@ -1,5 +1,3 @@
-# Auto Mode for Paseo
-
 > [!NOTE]
 > This project is an experiment. It explores what System 1 models can do as
 > message routers. A System 1 model gives a fast, intuitive answer without
@@ -8,6 +6,8 @@
 > It does not read your code or plan the work, so it can select the wrong preset.
 > Do not use this plugin in production. Examine each routing notice, and select
 > a preset manually when the choice is important.
+
+# Auto Mode for Paseo
 
 ![Three Paseo sessions. Each message shows the routing notice with the selected preset, model, task type, and depth.](docs/hero.png)
 
