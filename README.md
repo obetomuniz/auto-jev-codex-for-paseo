@@ -19,15 +19,12 @@ TypeSafe Jev or a local Laya model classifies the message.
 
 The conversation picker contains Auto and preset names. Model names stay in
 the plugin settings. Paseo owns workspaces and native provider authentication.
-The default presets start with Codex models. You can change the provider of
-each preset. Codex is necessary only for presets that use it.
 
 ## Requirements
 
 - Paseo 0.8.0 or later with plugins enabled.
 - Node.js 24 and npm.
 - An installed and authenticated Paseo provider for each enabled preset.
-- For Codex presets only: Codex CLI 0.153.4 or a compatible version, with a local login.
 - For Jev: a TypeSafe API key.
 - For Laya: no separate Python installation is needed on Windows.
 
@@ -211,7 +208,7 @@ Its scope scores come from a pass without them, because the counts reduced scope
 ### Provider support
 
 The model catalog comes from Paseo. Native execution uses Paseo's installed
-providers and existing credentials. Codex uses the existing App Server adapter.
+providers and existing credentials.
 Settings offer only the models, reasoning levels, and work modes published by
 that provider. Changing the provider clears dependent choices.
 Changing the model clears the reasoning level. Refresh loads new releases.
@@ -227,8 +224,6 @@ Reasoning effort is hidden when the selected model has no reasoning options.
 The preset's **Work mode** can override the automatic work-mode choice.
 It lists ordinary work modes. Plan and bypass are controlled by the conversation.
 The field is hidden when the provider publishes no work modes.
-Codex offers Default Permissions and Auto-review. Its Automatic choice uses Auto-review.
-Default Permissions sends approval requests to the user. Intent still limits the sandbox.
 Discussion and review do not enable Plan by themselves.
 With Plan off, native providers use the preset's work mode.
 Under automatic approvals, discussion and review receive no-edit instructions.
@@ -242,14 +237,12 @@ An unavailable reasoning setting uses the model default.
 Fast uses the model's published Fast feature when supported.
 Otherwise, execution continues at normal speed. The turn notice explains these fallbacks.
 
-Each non-Codex turn starts a native Paseo agent. It is archived after completion
-or cancellation. Its full timeline remains in Paseo. No second session store is added.
-The next run receives up to 24 conversational messages, at most 8,000 characters
+Most providers run each turn in a new native Paseo agent. The agent is archived
+after completion or cancellation. Its full timeline remains in Paseo. No second session store is added.
+Each new agent receives up to 24 conversational messages, at most 8,000 characters
 each. This handoff excludes tool output, reasoning, and previous image data.
-A resumed non-Codex chat replays this bounded conversational history.
+A resumed chat replays this bounded conversational history.
 Only the smaller six-message context goes to the classifier.
-Codex-to-Codex turns keep their existing native thread.
-A switch back to Codex includes the bounded conversation handoff.
 
 ## Composer controls
 
@@ -274,15 +267,15 @@ The Fast control has three options:
 
 Fast availability and quota use depend on the provider and model.
 
-The default permission setting is **Automatic approvals**. Codex uses the `on-request`
-approval policy and the `auto_review` reviewer. Other providers follow the support table. The classifier cannot enable Full access.
+The default permission setting is **Automatic approvals**. Each provider applies
+it as the support table shows. The classifier cannot enable Full access.
 Only an explicit user selection can enable Full access. Plan takes priority
 when Full access is selected. The plugin does not restore Full access when a
 session reopens.
 
-A setting change during a turn applies to the next turn. Codex steering keeps
-the current settings. Native provider runs do not support forced steering through
-this SDK. Wait for them to finish or interrupt them before sending another message.
+A setting change during a turn applies to the next turn. Steering support depends
+on the provider. If a provider does not support steering, wait for the run to finish
+or interrupt it before you send another message.
 
 ## Data and security
 
@@ -294,8 +287,7 @@ Laya processes it in a local Python process:
 - Up to 1,000 characters from each recent item.
 
 The plugin does not send tool output or private reasoning to either classifier. The
-plugin stores the short routing context in Paseo session data. For a chat with
-a Codex thread, it can also rebuild this context from the local Codex history.
+plugin stores the short routing context in Paseo session data.
 
 The plugin stores a TypeSafe API key in
 `~/.paseo/auto-mode-for-paseo.local.json` as plain text. A key in this file has
@@ -315,8 +307,7 @@ The plugin does not request vendor API keys.
 
 With automatic approvals, discussion and review request analysis without edits.
 Plan is a separate decision. Native execution uses the preset's work mode when
-Plan is off. Codex enforces intent through its sandbox. Other providers enforce
-their native permissions as described above. No-edit instructions do not add a sandbox.
+Plan is off. Each provider enforces its native permissions as described above. No-edit instructions do not add a sandbox.
 Unknown intent values and invalid scores stop the turn.
 
 The provider supports text, images, streamed responses, Plan questions,
@@ -338,7 +329,7 @@ Run all checks:
 npm run check
 ```
 
-The tests use simulated TypeSafe, Laya, Codex, and native Paseo provider services. They do not need
+The tests use simulated TypeSafe, Laya, and Paseo provider services. They do not need
 credentials, model downloads, or a running Paseo daemon.
 Python bridge tests use a fake Laya module and need Python 3.10 or later.
 Set `LAYA_TEST_PYTHON` if the executable is not named `python`.
@@ -375,7 +366,7 @@ silently select a different classifier.
 Paseo owns session-to-provider associations. This plugin does not rewrite its
 session database. Old chats may still refer to the old provider ID.
 If Paseo supplies an existing session to the new provider, it accepts the old
-Auto model ID and retains the Codex thread and safe controls. Full access is
+Auto model ID and retains the existing thread and safe controls. Full access is
 never restored from saved provider data.
 
 ## Update an existing installation
@@ -391,9 +382,6 @@ paseo plugin reload auto-mode-for-paseo
 - [Paseo](https://github.com/getpaseo/paseo)
 - [Paseo provider options](https://paseo.sh/docs/sdk/provider-options)
 - [Laya](https://github.com/NandhaKishorM/laya)
-- [Codex App Server](https://developers.openai.com/codex/app-server)
-- [Codex Auto-review](https://developers.openai.com/codex/sandboxing/auto-review)
-- [Codex speed settings](https://developers.openai.com/codex/speed)
 
 ## License
 
