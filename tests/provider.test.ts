@@ -16,10 +16,6 @@ test("provider routes new turns in one thread and preserves steer, permissions, 
   const settings = {
     ...defaults,
     apiKey: "test-key",
-    autoCodexModelCheap: "mechanical-model",
-    autoCodexModelReview: "review-model",
-    autoCodexEffortCheap: "low",
-    autoCodexEffortReview: "high",
     presets: defaults.presets.map((preset) => preset.id === "reporter" ? { ...preset, model: "mechanical-model", effort: "low" }
       : preset.id === "critic" ? { ...preset, model: "review-model", effort: "high" } : preset),
   };

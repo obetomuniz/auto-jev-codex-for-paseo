@@ -1,14 +1,6 @@
 import { defaults, MAX_PRESETS, type Preset, type ProviderSettings } from "./settings";
 import type { TaskType } from "./task-types";
 
-export const LEGACY_PRESET_FIELDS = {
-  staff: ["autoCodexModelStaff", "autoCodexEffortStaff"],
-  critic: ["autoCodexModelReview", "autoCodexEffortReview"],
-  reporter: ["autoCodexModelCheap", "autoCodexEffortCheap"],
-  writer: ["autoCodexModelStandard", "autoCodexEffortStandard"],
-  "tech-lead": ["autoCodexModelLead", "autoCodexEffortLead"],
-} as const;
-
 export function missingDefaultPresets(presets: readonly Preset[]): Preset[] {
   const ids = new Set(presets.map((preset) => preset.id));
   return defaults.presets.filter((preset) => !ids.has(preset.id)).map((preset) => ({ ...preset }));

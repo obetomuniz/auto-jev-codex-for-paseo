@@ -192,8 +192,6 @@ It cannot change the preset's instructions or grant Full access.
 Preset scopes are classification data. They do not authorize edits or enable Plan.
 Each started turn shows one compact notice with the selected preset, model,
 intent, required task depth, mode, and reasoning setting. Any capability fallback appears in that notice.
-Old model and effort settings migrate to the built-in presets on load.
-Existing preset settings take priority after migration.
 The new task-depth field starts from the built-in value for existing default presets.
 Other existing presets start at Standard. All values remain editable.
 
@@ -338,36 +336,6 @@ These tests skip locally when Python is absent. CI requires them.
 Read [CONTRIBUTING.md](CONTRIBUTING.md) before you submit a change. Read
 [ARCHITECTURE.md](ARCHITECTURE.md) for the module boundaries and routing rules.
 Report security problems as described in [SECURITY.md](SECURITY.md).
-
-## Migrate from Auto Jev-Codex for Paseo
-
-The repository, package, plugin, provider, and Auto model IDs are now
-`auto-mode-for-paseo`. The former ID was `auto-jev-codex-for-paseo`.
-
-Update your Git remote if it still uses the old repository name:
-
-```sh
-git remote set-url origin git@github.com:obetomuniz/auto-mode-for-paseo.git
-```
-
-Finish active turns. Disable the old plugin in Paseo.
-Install this checkout with `paseo plugin install .`.
-Open the new plugin settings. Verify the imported values.
-Edit a setting to write the migrated configuration automatically.
-Select **Auto Mode for Paseo** for new chats.
-
-If the new settings file is absent, the plugin reads
-`~/.paseo/auto-jev-codex-for-paseo.local.json`.
-Saving writes `~/.paseo/auto-mode-for-paseo.local.json`.
-The old file remains as a backup. Existing keys and model choices are retained.
-A malformed new file stops loading. It does not fall back to the old file or
-silently select a different classifier.
-
-Paseo owns session-to-provider associations. This plugin does not rewrite its
-session database. Old chats may still refer to the old provider ID.
-If Paseo supplies an existing session to the new provider, it accepts the old
-Auto model ID and retains the existing thread and safe controls. Full access is
-never restored from saved provider data.
 
 ## Update an existing installation
 

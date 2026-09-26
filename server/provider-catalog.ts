@@ -4,7 +4,7 @@ import { catalogSchema } from "../shared/provider-catalog";
 export async function providerCatalog(paseo: PaseoApi) {
   let snapshot = await paseo.providers.listAvailable();
   if (snapshot.error) throw new Error(snapshot.error);
-  const nativeProviders = () => snapshot.providers.filter((entry) => entry.provider !== "auto-mode-for-paseo" && entry.provider !== "auto-jev-codex-for-paseo");
+  const nativeProviders = () => snapshot.providers.filter((entry) => entry.provider !== "auto-mode-for-paseo");
   const requested = nativeProviders().map((entry) => entry.provider);
   if (requested.length) {
     const refresh = await paseo.providers.refresh({ providers: requested });

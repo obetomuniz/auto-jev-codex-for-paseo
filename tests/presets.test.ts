@@ -8,14 +8,13 @@ import { nativePolicy, type ExecutionPolicy } from "../server/provider-policy";
 import { appendHandoff, handoffPrompt, readHandoff, HANDOFF_MESSAGES, HANDOFF_TEXT_LIMIT } from "../server/handoff";
 import type { ContextEntry } from "../server/route-context";
 
-test("old model and effort overrides migrate once to the five presets", () => {
-  const settings = parseStoredSettings({ autoCodexModelLead: "future-model", autoCodexEffortLead: "future-effort" });
-  const lead = selectPreset(settings, "tech-lead");
-  assert.equal(lead.model, "future-model");
-  assert.equal(lead.effort, "future-effort");
+test("stored preset models and efforts survive a reload", () => {
+  const lead = selectPreset(parseStoredSettings({}), "tech-lead");
   assert.equal(lead.provider, "codex");
-  lead.model = "newer-model";
-  assert.equal(selectPreset(parseStoredSettings(settings), "tech-lead").model, "newer-model");
+  const edited = { ...defaults, presets: defaults.presets.map((preset) => preset.id === "tech-lead" ? { ...preset, model: "newer-model", effort: "future-effort" } : preset) };
+  const reloaded = selectPreset(parseStoredSettings(edited), "tech-lead");
+  assert.equal(reloaded.model, "newer-model");
+  assert.equal(reloaded.effort, "future-effort");
 });
 
 test("default roles and manual selection keep stable IDs", () => {

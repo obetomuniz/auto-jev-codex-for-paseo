@@ -53,7 +53,7 @@ class Worker {
       this.child.stderr.resume(); // Never surface library output that may contain private input.
       this.child.stdin.on("error", () => this.close(new Error("Laya input stream failed.")));
       this.child.on("error", () => this.close(new Error("Could not start Laya. Check the Python executable and install laya==0.3.5 in that environment.")));
-      this.child.on("close", () => this.close(new Error("Laya stopped; no Codex turn was started.")));
+      this.child.on("close", () => this.close(new Error("Laya stopped; no provider turn was started.")));
     } catch {
       this.close(new Error("Could not start the Laya process."));
     }
@@ -70,8 +70,8 @@ class Worker {
     this.child.stdin.write(payload + "\n", "utf8");
     const body = await response;
     if (isRecord(body) && typeof body.error === "string") {
-      if (body.error === "context") throw new Error("Laya context or questions exceed the model token budget. Shorten the request or start a chat with less context. No Codex turn was started.");
-      throw new Error("Laya classification failed. Check the model and selected device. No Codex turn was started.");
+      if (body.error === "context") throw new Error("Laya context or questions exceed the model token budget. Shorten the request or start a chat with less context. No provider turn was started.");
+      throw new Error("Laya classification failed. Check the model and selected device. No provider turn was started.");
     }
     return body;
   }
