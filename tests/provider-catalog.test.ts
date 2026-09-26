@@ -8,7 +8,7 @@ test("settings discovery refreshes installed models and excludes the router", as
   const requested: string[] = [];
   const paseo = { providers: {
     listAvailable: async () => ({ providers: [
-      { provider: "auto-mode-for-paseo", available: true }, { provider: "auto-jev-codex-for-paseo", available: true },
+      { provider: "auto-mode-for-paseo", available: true },
       { provider: "claude", available: true }, { provider: "custom", available: true }, { provider: "offline", available: false },
     ] }),
     refresh: async (options: unknown) => { refreshed = options; return { acknowledged: true }; },

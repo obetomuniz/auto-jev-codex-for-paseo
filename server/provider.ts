@@ -921,7 +921,7 @@ async function modelCatalog() {
 }
 
 async function normalizePresetSelection(value: string): Promise<string> {
-  if (value === "auto-jev-codex-for-paseo" || value === MODEL_ID) return MODEL_ID;
+  if (value === MODEL_ID) return MODEL_ID;
   const settings = await loadSettings();
   const direct = settings.presets.find((preset) => preset.id === value);
   if (direct) return direct.id;

@@ -10,6 +10,8 @@ import { pickIntent, type RouteAnswers } from "../server/classifier";
 import { LayaClassifier, disposeLaya } from "../server/laya";
 import { defaults } from "../shared/settings";
 import { answers, wireAnswers } from "./fixtures";
+
+const presetModel = (id: string) => defaults.presets.find((preset) => preset.id === id)!.model;
 import * as workspaceState from "../server/workspace-state";
 
 const choice = (value: string) => ({ type: "choice" as const, choice: value, probabilities: { [value]: 1 }, confidence: 1 });
@@ -124,15 +126,15 @@ test("auto controls default off, activate by Jev decision, and reset on a follow
 test("manual model, speed, plan and permissions override routing without leaking into later turns", async (t) => {
   const h = await harness(t);
   h.setResult(answers({ plan: choice("on"), fast: choice("on") }));
-  await h.configure({ model: defaults.autoCodexModelCheap, mode: "default", settings: { fast: "off" } });
+  await h.configure({ model: presetModel("reporter"), mode: "default", settings: { fast: "off" } });
   await h.send("Implemente a mudança");
-  assert.equal(h.latest().model, defaults.autoCodexModelCheap);
-  assert.equal(h.latest().collaborationMode.settings.model, defaults.autoCodexModelCheap);
+  assert.equal(h.latest().model, presetModel("reporter"));
+  assert.equal(h.latest().collaborationMode.settings.model, presetModel("reporter"));
   assert.equal(h.latest().collaborationMode.mode, "default");
   assert.equal(h.latest().serviceTier, "default");
   h.complete();
   await h.send("Continue");
-  assert.equal(h.latest().model, defaults.autoCodexModelLead);
+  assert.equal(h.latest().model, presetModel("tech-lead"));
   h.complete();
   await h.configure({ settings: { permissions: "full-access" } });
   await h.send("Faça a alteração autorizada");
@@ -192,7 +194,7 @@ test("Auto uses Writer for prose and Tech Lead for code delivery", async (t) => 
 
 test("failed classification never starts Codex and failed starts preserve one-shot selections", async (t) => {
   const h = await harness(t);
-  await h.configure({ model: defaults.autoCodexModelCheap });
+  await h.configure({ model: presetModel("reporter") });
   h.setResult(answers({ intent: choice("invalid") }));
   await h.send("Corrija");
   assert.equal(h.calls.length, 0);
@@ -202,7 +204,7 @@ test("failed classification never starts Codex and failed starts preserve one-sh
   assert.ok(!h.events.some((event) => event.type === "timeline.item" && event.item.type === "notification" && event.item.id.startsWith("auto-route:")));
   h.fail(false);
   await h.send("Tente novamente");
-  assert.equal(h.latest().model, defaults.autoCodexModelCheap);
+  assert.equal(h.latest().model, presetModel("reporter"));
   assert.equal(h.states.at(-1)!.recentConversation, undefined);
   const notices = h.events.flatMap((event) => event.type === "timeline.item" && event.item.type === "notification" && event.item.id.startsWith("auto-route:") ? [event.item.message] : []);
   assert.equal(notices.length, 1);
@@ -212,18 +214,18 @@ test("failed classification never starts Codex and failed starts preserve one-sh
 
 test("pinned selections survive reopening, but provider persistence cannot grant full access", async (t) => {
   const h = await harness(t);
-  await h.configure({ model: defaults.autoCodexModelCheap, settings: { modelScope: "pinned", permissions: "full-access" } });
+  await h.configure({ model: presetModel("reporter"), settings: { modelScope: "pinned", permissions: "full-access" } });
   await h.send("Implemente");
   h.item({ type: "agentMessage", id: "answer", text: "Pronto, agora podemos revisar." });
   h.complete();
   await h.send("Continue");
-  assert.equal(h.latest().model, defaults.autoCodexModelCheap);
+  assert.equal(h.latest().model, presetModel("reporter"));
   h.complete();
   const saved = h.events.filter((event) => event.type === "session.persistence").at(-1)!;
   await h.connection.send({ type: "session.close", sessionId: "s", requestId: "close" });
   await h.connection.send({ type: "session.open", sessionId: "s", requestId: "reopen", history: "skip", config: h.config, persistence: saved.persistence });
   await h.send("Revise");
-  assert.equal(h.latest().model, defaults.autoCodexModelCheap);
+  assert.equal(h.latest().model, presetModel("reporter"));
   assert.equal(h.latest().approvalPolicy, "on-request");
   assert.notEqual(h.latest().sandboxPolicy.type, "dangerFullAccess");
   assert.ok((h.states.at(-1)!.recentConversation as unknown[]).length > 0);
@@ -378,12 +380,12 @@ test("Laya shares permission boundaries and never restores Full access", async (
 });
 
 
-test("new provider migrates an old Auto model ID and keeps safe thread persistence", async (t) => {
+test("reopened Auto sessions keep safe thread persistence", async (t) => {
   const h = await harness(t);
   assert.equal(createAutoModeProvider().id, "auto-mode-for-paseo");
   await h.connection.send({ type: "session.close", sessionId: "s", requestId: "close" });
   await h.connection.send({ type: "session.open", sessionId: "s", requestId: "reopen", history: "skip", config: h.config, persistence: {
-    version: 1, data: { threadId: "thread", selectedModel: "auto-jev-codex-for-paseo", controls: { permissions: "full-access", modelScope: "pinned" } },
+    version: 1, data: { threadId: "thread", selectedModel: "auto-mode-for-paseo", controls: { permissions: "full-access", modelScope: "pinned" } },
   } });
   const config = h.events.filter((event) => event.type === "session.config").at(-1)!;
   assert.equal(config.config.model, "auto-mode-for-paseo");

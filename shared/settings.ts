@@ -5,11 +5,11 @@ import { TASK_TYPES } from "./task-types";
 
 export const presetSchema = z.object({
   id: z.string().trim().regex(/^[a-z][a-z0-9-]*$/).max(80)
-    .refine((id) => !["auto-mode-for-paseo", "auto-jev-codex-for-paseo"].includes(id), "This ID is reserved for Auto."),
+    .refine((id) => id !== "auto-mode-for-paseo", "This ID is reserved for Auto."),
   name: z.string().trim().min(1, "Enter a name.").max(80, "Use 80 characters or fewer."),
   description: z.string().trim().max(240, "Use 240 characters or fewer.").default(""),
   provider: z.string().trim().regex(/^[a-zA-Z0-9_-]+$/, "Choose a valid provider.").max(120, "Choose a valid provider.").default("codex")
-    .refine((id) => !["auto-mode-for-paseo", "auto-jev-codex-for-paseo"].includes(id), "A preset cannot route back to Auto Mode."),
+    .refine((id) => id !== "auto-mode-for-paseo", "A preset cannot route back to Auto Mode."),
   model: z.string().trim().min(1, "Choose a model.").max(200, "Choose a valid model."),
   effort: z.string().trim().max(80, "Use 80 characters or fewer."),
   taskDepth: z.enum(TASK_DEPTHS).default("medium"),
@@ -59,16 +59,6 @@ export const settingsSchema = z.object({
   layaDevice: z.enum(["cpu", "cuda", "auto"]).default("cpu"),
   apiKey: z.string().default(""),
   model: z.string().default("jev-latest"),
-  autoCodexModelStaff: z.string().default("gpt-6-astra"),
-  autoCodexModelReview: z.string().default("gpt-6-astra"),
-  autoCodexModelCheap: z.string().default("gpt-5.6-luna"),
-  autoCodexModelStandard: z.string().default("gpt-5.6-terra"),
-  autoCodexModelLead: z.string().default("gpt-5.6-sol"),
-  autoCodexEffortStaff: z.string().default("xhigh"),
-  autoCodexEffortReview: z.string().default("xhigh"),
-  autoCodexEffortCheap: z.string().default("low"),
-  autoCodexEffortStandard: z.string().default("medium"),
-  autoCodexEffortLead: z.string().default("high"),
   presets: presetsSchema.default(defaultPresets),
 });
 

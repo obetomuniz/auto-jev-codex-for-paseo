@@ -32,7 +32,7 @@ server/
   laya.ts                 Manage the bounded local Python process
   laya-worker.ts          Embed the Python bridge in the plugin bundle
   laya-questions.ts       Define compact Laya questions
-  settings-store.ts       Save settings and migrate old settings
+  settings-store.ts       Save and upgrade settings
 shared/
   settings.ts             Define schemas, defaults, types, and RPCs
   task-types.ts           Define the fixed task types and detection RPC
@@ -122,7 +122,7 @@ The classifier's effort answer selects the required task depth.
 The execution-shape answer remains advisory.
 
 The obsolete lane mapping, routing thresholds, and automatic flag are removed.
-Existing model overrides still migrate to preset settings. A one-time scope migration
+A one-time scope migration
 updates untouched default descriptions. Edited scopes and provider setups stay intact.
 Each scope question must fit Laya's existing token budget without truncation.
 

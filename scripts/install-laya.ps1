@@ -91,11 +91,9 @@ if ($LASTEXITCODE -ne 0) { throw "Laya installed but could not load the selected
 
 $settingsRoot = Join-Path $env:USERPROFILE ".paseo"
 $settingsPath = Join-Path $settingsRoot "auto-mode-for-paseo.local.json"
-$legacySettingsPath = Join-Path $settingsRoot "auto-jev-codex-for-paseo.local.json"
 $settings = [ordered]@{}
-$sourceSettingsPath = if (Test-Path -LiteralPath $settingsPath) { $settingsPath } elseif (Test-Path -LiteralPath $legacySettingsPath) { $legacySettingsPath } else { $null }
-if ($sourceSettingsPath) {
-  $existing = Get-Content -Raw -LiteralPath $sourceSettingsPath | ConvertFrom-Json
+if (Test-Path -LiteralPath $settingsPath) {
+  $existing = Get-Content -Raw -LiteralPath $settingsPath | ConvertFrom-Json
   foreach ($property in $existing.PSObject.Properties) { $settings[$property.Name] = $property.Value }
 }
 $settings["classifier"] = "laya"
